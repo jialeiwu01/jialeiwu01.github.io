@@ -320,14 +320,14 @@ const sellersTotal = Array.from({length: N}, (_, i) => Math.round(240 * Math.pow
 // Cohort retention
 const cohortLabels = ['Q1 2024','Q2 2024','Q3 2024','Q4 2024','Q1 2025','Q2 2025','Q3 2025','Q4 2025'];
 const cohortRetention = [
-  [100, 58, 44, 38, 35, 33, 31, 29, 28, 27, 26, 25],
-  [100, 59, 45, 39, 36, 34, 32, 31, 29, 28, 27, null],
-  [100, 60, 46, 40, 37, 35, 33, 32, 30, null, null, null],
-  [100, 62, 48, 42, 39, 37, 35, null, null, null, null, null],
-  [100, 64, 51, 45, 43, 41, null, null, null, null, null, null], // repeat-booking tools launch
-  [100, 66, 53, 47, 45, null, null, null, null, null, null, null],
-  [100, 67, 54, null, null, null, null, null, null, null, null, null],
-  [100, null, null, null, null, null, null, null, null, null, null, null],
+  [100, 58, 44, 38, 35, 33, 31, 29, 28, 27, 26, 25],                        // Q1 2024 · mature through M11
+  [100, 59, 45, 39, 36, 34, 32, 31, 29, 28, 27, 26],                        // Q2 2024 · mature through M11
+  [100, 60, 46, 40, 37, 35, 33, 32, 30, 29, 28, 27],                        // Q3 2024 · mature through M11
+  [100, 62, 48, 42, 39, 37, 35, 34, 32, 31, 30, 29],                        // Q4 2024 · mature through M11
+  [100, 64, 51, 45, 43, 41, 40, 39, 38, 37, null, null],                    // Q1 2025 · mature through M9 · repeat-booking tools launch
+  [100, 66, 53, 47, 45, 43, 42, null, null, null, null, null],              // Q2 2025 · mature through M6
+  [100, 67, 54, 48, null, null, null, null, null, null, null, null],        // Q3 2025 · mature through M3
+  [100, null, null, null, null, null, null, null, null, null, null, null],  // Q4 2025 · mature through M0
 ];
 // New buyer cohort sizes (by quarter)
 const cohortSizes = [420, 485, 560, 640, 745, 860, 985, 1105];
@@ -523,7 +523,7 @@ function renderCommentary() {
   const bullets = [
     `Over the last ${periodLabel} in ${catLabel}, GMV grew <b>${multiple}x</b> — an annualized rate of <b>${cagr.toFixed(0)}%</b>.`,
     `Take rate expanded from <b>8.1% to 11.0%</b> across the 24M window as premium listings (featured placement, verified badge) scaled to 22% of GMV.`,
-    `Buyer M6 retention stepped up from <b>35% (2024 cohorts) to 43% (early 2025 cohorts)</b> following the April 2025 launch of saved-vendor and repeat-booking tools.`,
+    `Buyer M6 retention stepped up from <b>~33% (2024 cohorts) to 41% (early 2025 cohorts)</b>, an ~8pp improvement at the same tenure mark — coinciding with the April 2025 launch of saved-vendor and repeat-booking tools.`,
     `LTV:CAC improved from <b>3.8x to 5.1x</b>, though CAC is up <b>18% YoY</b> in Home Services — recommend capping paid spend there pending cohort maturation.`,
     `Active seller churn in Landscaping running <b>~9% monthly</b> (vs. 4% platform average) — investigate seasonality vs. structural issue before Q2 planning.`,
   ];
