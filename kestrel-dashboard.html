@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Kestrel Market — Marketplace Analytics</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root { --kestrel:#0f766e; --kestrel-dark:#134e4a; --ink:#0b1220; --muted:#64748b; }
+  html, body { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Helvetica Neue", Arial, sans-serif; color: var(--ink); background:#f8fafc; }
+  .card { background:#fff; border:1px solid #e5e7eb; border-radius:12px; box-shadow: 0 1px 2px rgba(15,23,42,0.04); }
+  .kpi-label { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); font-weight:600; }
+  .kpi-value { font-size:26px; font-weight:700; letter-spacing:-0.02em; color:var(--ink); }
+  .chip { display:inline-flex; align-items:center; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:600; }
+  .chip-up { background:#ecfdf5; color:#065f46; }
+  .chip-dn { background:#fef2f2; color:#991b1b; }
+  .chip-flat { background:#f1f5f9; color:#475569; }
+  .tab { padding:10px 14px; font-size:13px; font-weight:500; color:var(--muted); border-bottom:2px solid transparent; cursor:pointer; user-select:none; transition: color .15s; }
+  .tab:hover { color: #334155; }
+  .tab.active { color:var(--kestrel-dark); border-bottom-color:var(--kestrel); }
+  .filter-btn { padding:6px 12px; font-size:12px; font-weight:500; border:1px solid #e5e7eb; background:#fff; border-radius:6px; cursor:pointer; color:#334155; transition: all .12s; }
+  .filter-btn.active { background:var(--kestrel); color:#fff; border-color:var(--kestrel); }
+  .filter-btn:hover:not(.active) { background:#f1f5f9; }
+  .filter-btn:disabled { opacity:0.4; cursor:not-allowed; }
+  h1,h2,h3 { letter-spacing:-0.015em; }
+  .heat-cell { font-size:10px; font-variant-numeric:tabular-nums; }
+  .insight-bullet::before { content:"▸"; color:var(--kestrel); margin-right:6px; font-weight:700; }
+  .view { display:none; }
+  .view.active { display:block; animation: fadeIn .2s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform: translateY(4px); } to { opacity:1; transform: translateY(0); } }
+  .disabled-filter { opacity:0.35; pointer-events:none; }
+</style>
+</head>
+<body class="min-h-screen">
+
+<header class="bg-white border-b border-slate-200">
+  <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:var(--kestrel)">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 3 5-7"/></svg>
+      </div>
+      <div>
+        <div class="font-semibold tracking-tight">Kestrel Market</div>
+        <div class="text-xs text-slate-500 -mt-0.5">Marketplace Analytics · Illustrative dataset</div>
+      </div>
+    </div>
+    <div class="text-xs text-slate-500">Data as of <span>Dec 31, 2025</span> · Refresh: Daily</div>
+  </div>
+  <div class="max-w-7xl mx-auto px-6 flex gap-1 border-t border-slate-100">
+    <div class="tab active" data-tab="overview">Overview</div>
+    <div class="tab" data-tab="growth">Growth</div>
+    <div class="tab" data-tab="unit-econ">Unit Economics</div>
+    <div class="tab" data-tab="cohorts">Cohorts</div>
+    <div class="tab" data-tab="categories">Categories</div>
+  </div>
+</header>
+
+<main class="max-w-7xl mx-auto px-6 py-6">
+
+  <!-- Filters -->
+  <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+    <div class="flex items-center gap-2">
+      <span class="text-xs font-semibold uppercase tracking-wider text-slate-500 mr-1">Period</span>
+      <button class="filter-btn" data-period="6">6M</button>
+      <button class="filter-btn" data-period="12">12M</button>
+      <button class="filter-btn active" data-period="24">24M</button>
+    </div>
+    <div class="flex items-center gap-2" id="category-filter-wrap">
+      <span class="text-xs font-semibold uppercase tracking-wider text-slate-500 mr-1">Category</span>
+      <select id="category-filter" class="text-sm border border-slate-200 rounded-md px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/40">
+        <option value="all">All categories</option>
+        <option value="home">Home Services</option>
+        <option value="cleaning">Commercial Cleaning</option>
+        <option value="landscape">Landscaping</option>
+        <option value="hvac">HVAC & Mechanical</option>
+        <option value="other">Other</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Context bar: what's being shown -->
+  <div class="mb-4 text-xs text-slate-500">
+    Showing <span id="ctx-period" class="font-semibold text-slate-700">24 months</span>
+    · Category: <span id="ctx-category" class="font-semibold text-slate-700">All</span>
+    · <span id="ctx-range" class="font-medium"></span>
+  </div>
+
+  <!-- Dynamic KPI row (re-rendered per tab) -->
+  <section id="kpi-row" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6"></section>
+
+  <!-- OVERVIEW VIEW -->
+  <section class="view active" data-view="overview">
+    <div class="card p-6 mb-6">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="font-semibold text-base">Analyst Commentary</h3>
+        <span class="text-xs text-slate-500">Auto-generated · reviewed weekly</span>
+      </div>
+      <ul id="ov-commentary" class="space-y-2 text-sm text-slate-700 leading-relaxed"></ul>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+      <div class="card p-5 lg:col-span-2">
+        <div class="flex items-start justify-between mb-3">
+          <div>
+            <h3 class="font-semibold text-base">GMV & Net Revenue</h3>
+            <p class="text-xs text-slate-500 mt-0.5" id="gmv-sub">Monthly · Net revenue = GMV × take rate</p>
+          </div>
+          <div class="text-right">
+            <div class="text-xs text-slate-500">Period CAGR</div>
+            <div class="font-semibold text-teal-700" id="chart-cagr">—</div>
+          </div>
+        </div>
+        <div style="height:300px"><canvas id="ovGmvChart"></canvas></div>
+      </div>
+      <div class="card p-5">
+        <h3 class="font-semibold text-base">Take Rate</h3>
+        <p class="text-xs text-slate-500 mt-0.5 mb-3">Net revenue ÷ GMV · %</p>
+        <div style="height:300px"><canvas id="ovTakeChart"></canvas></div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-5 gap-4 mb-6">
+      <div class="card p-5 lg:col-span-2">
+        <h3 class="font-semibold text-base">Category Mix</h3>
+        <p class="text-xs text-slate-500 mt-0.5 mb-3" id="ov-cat-sub">Share of marketplace volume · selected period</p>
+        <div style="height:260px"><canvas id="ovCatChart"></canvas></div>
+      </div>
+      <div class="card p-5 lg:col-span-3">
+        <div class="flex items-start justify-between mb-3">
+          <div>
+            <h3 class="font-semibold text-base">Buyer Cohort Retention</h3>
+            <p class="text-xs text-slate-500 mt-0.5">% of cohort buyers placing ≥1 order in month N</p>
+          </div>
+        </div>
+        <div id="ovCohortHeatmap"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- GROWTH VIEW -->
+  <section class="view" data-view="growth">
+    <div class="card p-5 mb-4">
+      <div class="flex items-start justify-between mb-3">
+        <div>
+          <h3 class="font-semibold text-base">GMV Trend · Monthly</h3>
+          <p class="text-xs text-slate-500 mt-0.5">Bars = GMV. Line = 3-month moving average.</p>
+        </div>
+        <div class="text-right">
+          <div class="text-xs text-slate-500">Period CAGR</div>
+          <div class="font-semibold text-teal-700" id="growth-cagr">—</div>
+        </div>
+      </div>
+      <div style="height:340px"><canvas id="growthGmvChart"></canvas></div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+      <div class="card p-5">
+        <h3 class="font-semibold text-base">Month-over-Month GMV Growth</h3>
+        <p class="text-xs text-slate-500 mt-0.5 mb-3">%. Positive bars = growth, negative = contraction.</p>
+        <div style="height:280px"><canvas id="growthMomChart"></canvas></div>
+      </div>
+      <div class="card p-5">
+        <h3 class="font-semibold text-base">Active Buyers & Sellers</h3>
+        <p class="text-xs text-slate-500 mt-0.5 mb-3">Unique active participants per month.</p>
+        <div style="height:280px"><canvas id="growthActiveChart"></canvas></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- UNIT ECONOMICS VIEW -->
+  <section class="view" data-view="unit-econ">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+      <div class="card p-5">
+        <h3 class="font-semibold text-base">Unit Economics · Per Buyer (LTM)</h3>
+        <p class="text-xs text-slate-500 mt-0.5 mb-3">$ per acquired buyer, trailing 12 months.</p>
+        <div style="height:320px"><canvas id="ueBarChart"></canvas></div>
+      </div>
+      <div class="card p-5">
+        <h3 class="font-semibold text-base">Contribution Margin per Order</h3>
+        <p class="text-xs text-slate-500 mt-0.5 mb-3">Revenue − variable costs, $ per order.</p>
+        <div style="height:320px"><canvas id="ueContribChart"></canvas></div>
+      </div>
+    </div>
+
+    <div class="card p-5 mb-6">
+      <h3 class="font-semibold text-base">LTV : CAC by Acquisition Quarter</h3>
+      <p class="text-xs text-slate-500 mt-0.5 mb-3">Ratio of lifetime value to customer acquisition cost. Target ≥ 3.0x.</p>
+      <div style="height:280px"><canvas id="ueLtvcacChart"></canvas></div>
+    </div>
+  </section>
+
+  <!-- COHORTS VIEW -->
+  <section class="view" data-view="cohorts">
+    <div class="card p-5 mb-4">
+      <div class="flex items-start justify-between mb-3">
+        <div>
+          <h3 class="font-semibold text-base">Buyer Cohort Retention · Quarterly Cohorts</h3>
+          <p class="text-xs text-slate-500 mt-0.5">% of cohort buyers placing ≥1 order in month N after acquisition.</p>
+        </div>
+      </div>
+      <div id="cohortBigHeatmap"></div>
+    </div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+      <div class="card p-5">
+        <h3 class="font-semibold text-base">Retention Curves</h3>
+        <p class="text-xs text-slate-500 mt-0.5 mb-3">Each line = one acquisition cohort.</p>
+        <div style="height:300px"><canvas id="cohortCurveChart"></canvas></div>
+      </div>
+      <div class="card p-5">
+        <h3 class="font-semibold text-base">Cohort Size · New Buyers per Quarter</h3>
+        <p class="text-xs text-slate-500 mt-0.5 mb-3">Count of first-time buyers.</p>
+        <div style="height:300px"><canvas id="cohortSizeChart"></canvas></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CATEGORIES VIEW -->
+  <section class="view" data-view="categories">
+    <div class="grid grid-cols-1 lg:grid-cols-5 gap-4 mb-4">
+      <div class="card p-5 lg:col-span-2">
+        <h3 class="font-semibold text-base">Category Mix · Selected Period</h3>
+        <p class="text-xs text-slate-500 mt-0.5 mb-3">Share of GMV by category.</p>
+        <div style="height:320px"><canvas id="catDonutChart"></canvas></div>
+      </div>
+      <div class="card p-5 lg:col-span-3">
+        <h3 class="font-semibold text-base">Category GMV Over Time</h3>
+        <p class="text-xs text-slate-500 mt-0.5 mb-3">Monthly GMV, stacked by category.</p>
+        <div style="height:320px"><canvas id="catStackChart"></canvas></div>
+      </div>
+    </div>
+    <div class="card p-5 mb-6">
+      <h3 class="font-semibold text-base">YoY Growth by Category</h3>
+      <p class="text-xs text-slate-500 mt-0.5 mb-3">Latest 12M vs. prior 12M, %.</p>
+      <div style="height:240px"><canvas id="catYoYChart"></canvas></div>
+    </div>
+  </section>
+
+  <footer class="text-center text-xs text-slate-400 py-6">
+    Built by Jialei Wu · Data in this dashboard is synthetic and for portfolio demonstration only.
+  </footer>
+</main>
+
+<script>
+// ============================================================
+// SYNTHETIC DATA
+// ============================================================
+const N = 24;
+const monthLabels = [];
+const startDate = new Date(2024, 0, 1);
+for (let i = 0; i < N; i++) {
+  const d = new Date(startDate.getFullYear(), startDate.getMonth() + i, 1);
+  monthLabels.push(d.toLocaleString('en-US', { month: 'short', year: '2-digit' }));
+}
+
+// Total GMV ($K)
+const gmvTotal = Array.from({length: N}, (_, i) => {
+  const base = 1200 * Math.pow(1.068, i);
+  const seasonal = 1 + 0.08 * Math.sin((i + 1) * Math.PI / 6 - Math.PI / 3);
+  const noise = 1 + (Math.sin(i * 2.3) * 0.03);
+  return Math.round(base * seasonal * noise);
+});
+
+// Take rate (%)
+const takeRate = Array.from({length: N}, (_, i) => {
+  let t = 8.1 + (i / (N - 1)) * 2.9;
+  if (i >= 18 && i <= 20) t -= 0.6;
+  return +(t).toFixed(2);
+});
+
+// Category share over time (sums to 1.0 each month)
+// Home Services declines 45→42%; Commercial Cleaning grows 18→23%; Landscaping flat 15→14%;
+// HVAC grows 10→15%; Other declines 12→6%.
+function interpShare(start, end, i) {
+  return start + (end - start) * (i / (N - 1));
+}
+const categoryKeys = ['home', 'cleaning', 'landscape', 'hvac', 'other'];
+const categoryNames = {
+  home: 'Home Services',
+  cleaning: 'Commercial Cleaning',
+  landscape: 'Landscaping',
+  hvac: 'HVAC & Mechanical',
+  other: 'Other'
+};
+const categoryColors = {
+  home: '#0f766e',
+  cleaning: '#14b8a6',
+  landscape: '#5eead4',
+  hvac: '#0ea5e9',
+  other: '#cbd5e1'
+};
+const catShareTargets = {
+  home:      { start: 0.45, end: 0.42 },
+  cleaning:  { start: 0.18, end: 0.23 },
+  landscape: { start: 0.15, end: 0.14 },
+  hvac:      { start: 0.10, end: 0.15 },
+  other:     { start: 0.12, end: 0.06 }
+};
+// Per-category GMV time series
+const categoryGmv = {};
+for (const k of categoryKeys) {
+  categoryGmv[k] = Array.from({length: N}, (_, i) => {
+    const share = interpShare(catShareTargets[k].start, catShareTargets[k].end, i);
+    // Add mild noise
+    const noise = 1 + Math.sin((i+1) * (1 + categoryKeys.indexOf(k))) * 0.03;
+    return Math.round(gmvTotal[i] * share * noise);
+  });
+}
+// Renormalize so per-category sums equal gmvTotal each month
+for (let i = 0; i < N; i++) {
+  const sum = categoryKeys.reduce((s, k) => s + categoryGmv[k][i], 0);
+  const ratio = gmvTotal[i] / sum;
+  for (const k of categoryKeys) categoryGmv[k][i] = Math.round(categoryGmv[k][i] * ratio);
+}
+
+// Active buyers/sellers
+const buyersTotal = Array.from({length: N}, (_, i) => Math.round(1800 * Math.pow(1.047, i) + Math.sin(i * 1.1) * 60));
+const sellersTotal = Array.from({length: N}, (_, i) => Math.round(240 * Math.pow(1.045, i) + Math.sin(i * 1.3) * 10));
+
+// Cohort retention
+const cohortLabels = ['Q1 2024','Q2 2024','Q3 2024','Q4 2024','Q1 2025','Q2 2025','Q3 2025','Q4 2025'];
+const cohortRetention = [
+  [100, 58, 44, 38, 35, 33, 31, 29, 28, 27, 26, 25],
+  [100, 59, 45, 39, 36, 34, 32, 31, 29, 28, 27, null],
+  [100, 60, 46, 40, 37, 35, 33, 32, 30, null, null, null],
+  [100, 62, 48, 42, 39, 37, 35, null, null, null, null, null],
+  [100, 64, 51, 45, 43, 41, null, null, null, null, null, null], // repeat-booking tools launch
+  [100, 66, 53, 47, 45, null, null, null, null, null, null, null],
+  [100, 67, 54, null, null, null, null, null, null, null, null, null],
+  [100, null, null, null, null, null, null, null, null, null, null, null],
+];
+// New buyer cohort sizes (by quarter)
+const cohortSizes = [420, 485, 560, 640, 745, 860, 985, 1105];
+
+// LTV:CAC by acquisition quarter
+const ltvCacByCohort = [3.8, 4.0, 4.2, 4.3, 4.6, 4.9, 5.1, 5.1];
+
+// Contribution margin per order ($, over time)
+const contribMargin = Array.from({length: N}, (_, i) => {
+  return +(12 + i * 0.35 + Math.sin(i * 1.2) * 0.5).toFixed(2);
+});
+
+// ============================================================
+// STATE
+// ============================================================
+const state = { period: 24, category: 'all', tab: 'overview' };
+
+// Chart registry so we can destroy/recreate on re-render
+const charts = {};
+function killCharts() {
+  Object.keys(charts).forEach(k => { try { charts[k].destroy(); } catch {} delete charts[k]; });
+}
+
+// ============================================================
+// DATA HELPERS (apply period + category filters)
+// ============================================================
+function slicedMonths() {
+  return monthLabels.slice(N - state.period);
+}
+function slicedGmv() {
+  const arr = state.category === 'all' ? gmvTotal : categoryGmv[state.category];
+  return arr.slice(N - state.period);
+}
+function slicedRevenue() {
+  // Revenue = GMV × take rate (same take rate across categories for simplicity)
+  const g = slicedGmv();
+  const t = takeRate.slice(N - state.period);
+  return g.map((v, i) => Math.round(v * t[i] / 100));
+}
+function slicedTakeRate() {
+  return takeRate.slice(N - state.period);
+}
+function slicedBuyers() {
+  return buyersTotal.slice(N - state.period);
+}
+function slicedSellers() {
+  return sellersTotal.slice(N - state.period);
+}
+function momGrowth(series) {
+  return series.map((v, i) => i === 0 ? null : +((v / series[i-1] - 1) * 100).toFixed(2));
+}
+function cagrPct(series) {
+  if (series.length < 2) return 0;
+  const first = series[0], last = series[series.length - 1];
+  const monthsSpan = series.length - 1;
+  const years = monthsSpan / 12;
+  return (Math.pow(last / first, 1 / years) - 1) * 100;
+}
+// Category mix for the selected period
+function categoryMixForPeriod() {
+  const startIdx = N - state.period;
+  const totals = {};
+  for (const k of categoryKeys) {
+    totals[k] = categoryGmv[k].slice(startIdx).reduce((a,b) => a+b, 0);
+  }
+  const sum = Object.values(totals).reduce((a,b) => a+b, 0);
+  return categoryKeys.map(k => ({ key: k, name: categoryNames[k], color: categoryColors[k], value: totals[k], pct: totals[k] / sum * 100 }));
+}
+
+// ============================================================
+// FORMATTERS
+// ============================================================
+const fmt$K = v => '$' + (v >= 1000 ? (v/1000).toFixed(1) + 'M' : Math.round(v) + 'K');
+const fmtPct1 = v => (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
+const fmtNumK = v => v >= 1000 ? (v/1000).toFixed(1) + 'K' : Math.round(v).toString();
+
+// ============================================================
+// KPI RENDERING (varies by tab)
+// ============================================================
+function renderKpis() {
+  const row = document.getElementById('kpi-row');
+  const period = state.period;
+  const gmv = slicedGmv();
+  const rev = slicedRevenue();
+  const take = slicedTakeRate();
+  const buyers = slicedBuyers();
+  const sellers = slicedSellers();
+
+  const sum = arr => arr.reduce((a,b) => a+b, 0);
+  const gmvSum = sum(gmv);
+  const revSum = sum(rev);
+  const avgTake = gmvSum > 0 ? revSum / gmvSum * 100 : 0;
+
+  // Prior-period comparison (same window, shifted back)
+  const startIdx = N - period;
+  const priorStartIdx = Math.max(0, startIdx - period);
+  const priorGmvSum = state.category === 'all'
+    ? gmvTotal.slice(priorStartIdx, startIdx).reduce((a,b)=>a+b,0)
+    : categoryGmv[state.category].slice(priorStartIdx, startIdx).reduce((a,b)=>a+b,0);
+  const priorRevSum = priorGmvSum > 0
+    ? (state.category === 'all'
+        ? gmvTotal.slice(priorStartIdx, startIdx).reduce((a,b,i)=>a + b * takeRate[priorStartIdx+i]/100, 0)
+        : categoryGmv[state.category].slice(priorStartIdx, startIdx).reduce((a,b,i)=>a + b * takeRate[priorStartIdx+i]/100, 0))
+    : 0;
+
+  const hasPrior = priorStartIdx < startIdx;
+  const gmvDelta = hasPrior ? (gmvSum / priorGmvSum - 1) * 100 : null;
+  const revDelta = hasPrior ? (revSum / priorRevSum - 1) * 100 : null;
+
+  const periodLabel = `${period}M`;
+  const priorChip = (v) => v === null
+    ? '<span class="chip chip-flat">n/a</span> <span class="text-xs text-slate-500">no prior period</span>'
+    : `<span class="chip ${v >= 0 ? 'chip-up' : 'chip-dn'}">${fmtPct1(v)}</span> <span class="text-xs text-slate-500">vs. prior ${periodLabel}</span>`;
+
+  let tiles = [];
+
+  if (state.tab === 'overview' || state.tab === 'growth') {
+    tiles = [
+      { label: `GMV (${periodLabel})`, value: '$' + (gmvSum/1000).toFixed(1) + 'M', meta: priorChip(gmvDelta) },
+      { label: `Net Revenue (${periodLabel})`, value: '$' + (revSum/1000).toFixed(1) + 'M', meta: priorChip(revDelta) },
+      { label: `Take Rate`, value: avgTake.toFixed(1) + '%', meta: `<span class="chip chip-up">+${(avgTake - takeRate.reduce((a,b)=>a+b,0)/N).toFixed(1)}pp</span> <span class="text-xs text-slate-500">vs. 24M avg</span>` },
+      { label: `Active Buyers`, value: (buyers.at(-1)/1000).toFixed(1) + 'K', meta: `<span class="chip ${buyers.at(-1) >= buyers.at(-2) ? 'chip-up' : 'chip-dn'}">${fmtPct1((buyers.at(-1)/buyers.at(-2)-1)*100)}</span> <span class="text-xs text-slate-500">MoM</span>` },
+      { label: `Active Sellers`, value: buyers.length ? sellers.at(-1).toString() : '—', meta: `<span class="chip chip-up">${fmtPct1((sellers.at(-1)/sellers.at(-2)-1)*100)}</span> <span class="text-xs text-slate-500">MoM</span>` },
+      { label: `Period CAGR`, value: fmtPct1(cagrPct(gmv)), meta: `<span class="text-xs text-slate-500">annualized GMV</span>` },
+    ];
+  } else if (state.tab === 'unit-econ') {
+    const avgOrderValue = 520;
+    const cacLatest = 82;
+    const ltvLatest = 420;
+    tiles = [
+      { label: `AOV`, value: '$' + avgOrderValue, meta: `<span class="chip chip-up">+4.1%</span> <span class="text-xs text-slate-500">YoY</span>` },
+      { label: `Take Rate`, value: avgTake.toFixed(1) + '%', meta: `<span class="chip chip-up">+2.1pp</span> <span class="text-xs text-slate-500">vs. 24M avg</span>` },
+      { label: `Contribution / Order`, value: '$' + contribMargin[contribMargin.length - 1].toFixed(2), meta: `<span class="chip chip-up">+${((contribMargin.at(-1)/contribMargin[0]-1)*100).toFixed(0)}%</span> <span class="text-xs text-slate-500">vs. Jan '24</span>` },
+      { label: `CAC (buyer)`, value: '$' + cacLatest, meta: `<span class="chip chip-dn">+18%</span> <span class="text-xs text-slate-500">YoY</span>` },
+      { label: `LTV (buyer)`, value: '$' + ltvLatest, meta: `<span class="chip chip-up">+28%</span> <span class="text-xs text-slate-500">YoY</span>` },
+      { label: `LTV : CAC`, value: (ltvLatest/cacLatest).toFixed(1) + 'x', meta: `<span class="chip chip-up">+1.3x</span> <span class="text-xs text-slate-500">vs. prior year</span>` },
+    ];
+  } else if (state.tab === 'cohorts') {
+    // Avg retention across all cohorts
+    const m1Values = cohortRetention.map(r => r[1]).filter(v => v !== null);
+    const m3Values = cohortRetention.map(r => r[3]).filter(v => v !== null);
+    const m6Values = cohortRetention.map(r => r[6]).filter(v => v !== null);
+    const m12Values = cohortRetention.map(r => r[11]).filter(v => v !== null);
+    const avg = arr => arr.reduce((a,b)=>a+b,0) / arr.length;
+    tiles = [
+      { label: `Avg M1 Retention`, value: avg(m1Values).toFixed(1) + '%', meta: `<span class="chip chip-up">+6.8pp</span> <span class="text-xs text-slate-500">Q1 '24 → Q3 '25</span>` },
+      { label: `Avg M3 Retention`, value: avg(m3Values).toFixed(1) + '%', meta: `<span class="chip chip-up">+7.0pp</span> <span class="text-xs text-slate-500">cohort trend</span>` },
+      { label: `Avg M6 Retention`, value: avg(m6Values).toFixed(1) + '%', meta: `<span class="chip chip-up">+8.0pp</span> <span class="text-xs text-slate-500">cohort trend</span>` },
+      { label: `M12 Retention (mature)`, value: m12Values.length > 0 ? m12Values[0] + '%' : 'n/a', meta: `<span class="text-xs text-slate-500">oldest cohort only</span>` },
+      { label: `Avg Cohort Size`, value: fmtNumK(cohortSizes.reduce((a,b)=>a+b,0)/cohortSizes.length), meta: `<span class="chip chip-up">+163%</span> <span class="text-xs text-slate-500">Q1'24→Q4'25</span>` },
+      { label: `Repeat Buyer Rate`, value: '47%', meta: `<span class="chip chip-up">+5pp</span> <span class="text-xs text-slate-500">YoY</span>` },
+    ];
+  } else if (state.tab === 'categories') {
+    const mix = categoryMixForPeriod().slice().sort((a,b) => b.value - a.value);
+    const top = mix[0];
+    // Fastest growing: largest share change start vs end in period
+    let fastest = null, maxDelta = -Infinity;
+    const startIdx = N - state.period;
+    for (const k of categoryKeys) {
+      const startShare = categoryGmv[k][startIdx] / gmvTotal[startIdx];
+      const endShare = categoryGmv[k][N-1] / gmvTotal[N-1];
+      const d = endShare - startShare;
+      if (d > maxDelta) { maxDelta = d; fastest = categoryNames[k]; }
+    }
+    tiles = [
+      { label: `Top Category`, value: top.name.split(' ')[0], meta: `<span class="text-xs text-slate-500">${top.pct.toFixed(0)}% of GMV</span>` },
+      { label: `Fastest Growing`, value: fastest.split(' ')[0], meta: `<span class="chip chip-up">+${(maxDelta*100).toFixed(1)}pp share</span>` },
+      { label: `# Categories`, value: categoryKeys.length.toString(), meta: `<span class="text-xs text-slate-500">active verticals</span>` },
+      { label: `Top 2 Concentration`, value: (mix[0].pct + mix[1].pct).toFixed(0) + '%', meta: `<span class="text-xs text-slate-500">share of GMV</span>` },
+      { label: `Long Tail Share`, value: mix.slice(2).reduce((a,b)=>a+b.pct, 0).toFixed(0) + '%', meta: `<span class="text-xs text-slate-500">bottom 3 categories</span>` },
+      { label: `Period GMV`, value: '$' + (gmvSum/1000).toFixed(1) + 'M', meta: priorChip(gmvDelta) },
+    ];
+  }
+
+  row.innerHTML = tiles.map(t => `
+    <div class="card p-4">
+      <div class="kpi-label">${t.label}</div>
+      <div class="kpi-value mt-1">${t.value}</div>
+      <div class="mt-1">${t.meta}</div>
+    </div>`).join('');
+}
+
+// ============================================================
+// COMMENTARY (context-aware)
+// ============================================================
+function renderCommentary() {
+  const gmv = slicedGmv();
+  const cagr = cagrPct(gmv);
+  const periodLabel = state.period + 'M';
+  const catLabel = state.category === 'all' ? 'the full marketplace' : categoryNames[state.category];
+  const firstVal = gmv[0], lastVal = gmv[gmv.length - 1];
+  const multiple = (lastVal / firstVal).toFixed(1);
+  const bullets = [
+    `Over the last ${periodLabel} in ${catLabel}, GMV grew <b>${multiple}x</b> — an annualized rate of <b>${cagr.toFixed(0)}%</b>.`,
+    `Take rate expanded from <b>8.1% to 11.0%</b> across the 24M window as premium listings (featured placement, verified badge) scaled to 22% of GMV.`,
+    `Buyer M6 retention stepped up from <b>35% (2024 cohorts) to 43% (early 2025 cohorts)</b> following the April 2025 launch of saved-vendor and repeat-booking tools.`,
+    `LTV:CAC improved from <b>3.8x to 5.1x</b>, though CAC is up <b>18% YoY</b> in Home Services — recommend capping paid spend there pending cohort maturation.`,
+    `Active seller churn in Landscaping running <b>~9% monthly</b> (vs. 4% platform average) — investigate seasonality vs. structural issue before Q2 planning.`,
+  ];
+  const el = document.getElementById('ov-commentary');
+  if (el) el.innerHTML = bullets.map(b => `<li class="insight-bullet">${b}</li>`).join('');
+}
+
+// ============================================================
+// CONTEXT BAR
+// ============================================================
+function renderContext() {
+  document.getElementById('ctx-period').textContent = state.period + ' months';
+  document.getElementById('ctx-category').textContent = state.category === 'all' ? 'All' : categoryNames[state.category];
+  const months = slicedMonths();
+  document.getElementById('ctx-range').textContent = months.length ? `${months[0]} – ${months[months.length - 1]}` : '';
+}
+
+// ============================================================
+// CHART DEFAULTS
+// ============================================================
+Chart.defaults.font.family = '-apple-system, "Inter", "Helvetica Neue", Arial, sans-serif';
+Chart.defaults.font.size = 11;
+Chart.defaults.color = '#475569';
+Chart.defaults.plugins.tooltip.padding = 10;
+Chart.defaults.plugins.tooltip.titleFont = { weight: '600' };
+Chart.defaults.plugins.tooltip.backgroundColor = '#0b1220';
+Chart.defaults.plugins.tooltip.cornerRadius = 6;
+
+// ============================================================
+// OVERVIEW TAB RENDER
+// ============================================================
+function renderOverview() {
+  const months = slicedMonths();
+  const gmv = slicedGmv();
+  const rev = slicedRevenue();
+  const take = slicedTakeRate();
+
+  document.getElementById('chart-cagr').textContent = fmtPct1(cagrPct(gmv));
+  document.getElementById('gmv-sub').textContent = `Monthly · ${state.category === 'all' ? 'All categories' : categoryNames[state.category]}`;
+
+  charts.ovGmv = new Chart(document.getElementById('ovGmvChart'), {
+    type: 'bar',
+    data: {
+      labels: months,
+      datasets: [
+        { type:'bar', label:'GMV ($K)', data: gmv, backgroundColor:'#cbd5e1', borderRadius:3, order:2, yAxisID:'y' },
+        { type:'line', label:'Net Revenue ($K)', data: rev, borderColor:'#0f766e', backgroundColor:'transparent', borderWidth:2.5, tension:0.3, pointRadius:0, pointHoverRadius:4, fill:false, order:1, yAxisID:'y1' }
+      ]
+    },
+    options: {
+      maintainAspectRatio:false, interaction:{ intersect:false, mode:'index' },
+      plugins:{ legend:{ position:'bottom', labels:{ usePointStyle:true, pointStyle:'circle', boxWidth:6, padding:16 } },
+        tooltip:{ callbacks:{ label: ctx => ctx.dataset.label + ': $' + ctx.parsed.y.toLocaleString() + 'K' } } },
+      scales:{ x:{ grid:{ display:false } }, y:{ position:'left', grid:{ color:'#f1f5f9' }, ticks:{ callback:v=>'$'+v+'K' } }, y1:{ position:'right', grid:{ display:false }, ticks:{ callback:v=>'$'+v+'K' } } }
+    }
+  });
+
+  charts.ovTake = new Chart(document.getElementById('ovTakeChart'), {
+    type: 'line',
+    data: { labels: months, datasets: [{ label:'Take rate', data: take, borderColor:'#0f766e', backgroundColor:'rgba(15,118,110,0.1)', borderWidth:2, tension:0.35, pointRadius:0, pointHoverRadius:4, fill:true }] },
+    options: { maintainAspectRatio:false,
+      plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label:ctx=>'Take rate: '+ctx.parsed.y.toFixed(2)+'%' } } },
+      scales:{ x:{ grid:{ display:false } }, y:{ min:7, max:12, grid:{ color:'#f1f5f9' }, ticks:{ callback:v=>v.toFixed(1)+'%' } } } }
+  });
+
+  const mix = categoryMixForPeriod();
+  charts.ovCat = new Chart(document.getElementById('ovCatChart'), {
+    type: 'doughnut',
+    data: { labels: mix.map(m=>m.name), datasets: [{ data: mix.map(m=>+m.pct.toFixed(1)), backgroundColor: mix.map(m=>m.color), borderColor:'#fff', borderWidth:2 }] },
+    options: { maintainAspectRatio:false, cutout:'62%',
+      plugins:{ legend:{ position:'right', labels:{ usePointStyle:true, pointStyle:'circle', boxWidth:8, padding:12 } },
+        tooltip:{ callbacks:{ label: ctx => ctx.label + ': ' + ctx.parsed + '%' } } } }
+  });
+
+  renderCohortHeatmap('ovCohortHeatmap', /*compact=*/true);
+}
+
+// ============================================================
+// GROWTH TAB RENDER
+// ============================================================
+function renderGrowth() {
+  const months = slicedMonths();
+  const gmv = slicedGmv();
+  const buyers = slicedBuyers();
+  const sellers = slicedSellers();
+  document.getElementById('growth-cagr').textContent = fmtPct1(cagrPct(gmv));
+
+  // 3-mo moving avg of GMV
+  const ma = gmv.map((_, i) => {
+    if (i < 2) return null;
+    return (gmv[i] + gmv[i-1] + gmv[i-2]) / 3;
+  });
+
+  charts.growthGmv = new Chart(document.getElementById('growthGmvChart'), {
+    type: 'bar',
+    data: {
+      labels: months,
+      datasets: [
+        { type:'bar', label:'GMV ($K)', data: gmv, backgroundColor:'#cbd5e1', borderRadius:3, order:2 },
+        { type:'line', label:'3-mo moving avg', data: ma, borderColor:'#0f766e', backgroundColor:'transparent', borderWidth:2.5, tension:0.3, pointRadius:0, spanGaps:false, order:1 }
+      ]
+    },
+    options: { maintainAspectRatio:false, interaction:{ intersect:false, mode:'index' },
+      plugins:{ legend:{ position:'bottom', labels:{ usePointStyle:true, pointStyle:'circle', boxWidth:6, padding:16 } },
+        tooltip:{ callbacks:{ label: ctx => ctx.dataset.label + ': $' + (ctx.parsed.y ? ctx.parsed.y.toFixed(0) : '—') + 'K' } } },
+      scales:{ x:{ grid:{ display:false } }, y:{ grid:{ color:'#f1f5f9' }, ticks:{ callback:v=>'$'+v+'K' } } } }
+  });
+
+  const mom = momGrowth(gmv);
+  charts.growthMom = new Chart(document.getElementById('growthMomChart'), {
+    type: 'bar',
+    data: { labels: months, datasets: [{ label:'MoM GMV growth', data: mom, backgroundColor: mom.map(v => v === null ? '#cbd5e1' : v >= 0 ? '#14b8a6' : '#f87171'), borderRadius:3 }] },
+    options: { maintainAspectRatio:false,
+      plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label:ctx=>ctx.parsed.y === null ? 'n/a' : 'MoM: ' + ctx.parsed.y.toFixed(2) + '%' } } },
+      scales:{ x:{ grid:{ display:false } }, y:{ grid:{ color:'#f1f5f9' }, ticks:{ callback:v=>v.toFixed(0)+'%' } } } }
+  });
+
+  charts.growthActive = new Chart(document.getElementById('growthActiveChart'), {
+    type: 'line',
+    data: { labels: months, datasets: [
+      { label:'Active buyers', data: buyers, borderColor:'#0f766e', backgroundColor:'rgba(15,118,110,0.12)', borderWidth:2, tension:0.3, pointRadius:0, fill:true, yAxisID:'y' },
+      { label:'Active sellers', data: sellers, borderColor:'#0ea5e9', backgroundColor:'rgba(14,165,233,0.1)', borderWidth:2, tension:0.3, pointRadius:0, yAxisID:'y1' }
+    ] },
+    options: { maintainAspectRatio:false, interaction:{ intersect:false, mode:'index' },
+      plugins:{ legend:{ position:'bottom', labels:{ usePointStyle:true, pointStyle:'circle', boxWidth:6, padding:14 } } },
+      scales:{ x:{ grid:{ display:false } }, y:{ position:'left', grid:{ color:'#f1f5f9' }, ticks:{ callback:v=>(v/1000).toFixed(1)+'K' } }, y1:{ position:'right', grid:{ display:false } } } }
+  });
+}
+
+// ============================================================
+// UNIT ECONOMICS TAB RENDER
+// ============================================================
+function renderUnitEcon() {
+  // Bar: per-buyer unit economics
+  charts.ueBar = new Chart(document.getElementById('ueBarChart'), {
+    type: 'bar',
+    data: {
+      labels: ['Avg orders/yr','AOV','Gross GMV','Platform rev (take)','COGS & support','Contribution','CAC','Payback mo.'],
+      datasets: [{ label:'Per buyer', data: [5.8, 420, 2436, 268, 72, 196, 82, 5.0],
+        backgroundColor: ['#64748b','#64748b','#64748b','#0f766e','#64748b','#0f766e','#dc2626','#64748b'], borderRadius:4 }]
+    },
+    options: { maintainAspectRatio:false, indexAxis:'y',
+      plugins:{ legend:{ display:false },
+        tooltip:{ callbacks:{ label: ctx => {
+          const v = ctx.parsed.x, lbl = ctx.label;
+          if (lbl === 'Avg orders/yr') return v + ' orders';
+          if (lbl === 'Payback mo.') return v + ' months';
+          return '$' + v.toLocaleString();
+        } } } },
+      scales:{ x:{ grid:{ color:'#f1f5f9' } }, y:{ grid:{ display:false } } } }
+  });
+
+  // Contribution margin per order trend
+  const months = slicedMonths();
+  const cm = contribMargin.slice(N - state.period);
+  charts.ueContrib = new Chart(document.getElementById('ueContribChart'), {
+    type: 'line',
+    data: { labels: months, datasets: [{ label:'Contribution / order ($)', data: cm, borderColor:'#0f766e', backgroundColor:'rgba(15,118,110,0.12)', borderWidth:2, tension:0.3, pointRadius:0, pointHoverRadius:4, fill:true }] },
+    options: { maintainAspectRatio:false,
+      plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label: ctx => '$' + ctx.parsed.y.toFixed(2) } } },
+      scales:{ x:{ grid:{ display:false } }, y:{ grid:{ color:'#f1f5f9' }, ticks:{ callback:v=>'$'+v.toFixed(1) } } } }
+  });
+
+  // LTV:CAC by cohort quarter
+  charts.ueLtvcac = new Chart(document.getElementById('ueLtvcacChart'), {
+    type: 'bar',
+    data: { labels: cohortLabels, datasets: [{ label:'LTV:CAC', data: ltvCacByCohort, backgroundColor: ltvCacByCohort.map(v => v >= 3 ? '#14b8a6' : '#f87171'), borderRadius:4 }] },
+    options: { maintainAspectRatio:false,
+      plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label: ctx => ctx.parsed.y.toFixed(1) + 'x' } } },
+      scales:{ x:{ grid:{ display:false } }, y:{ grid:{ color:'#f1f5f9' }, ticks:{ callback:v=>v.toFixed(1)+'x' } } } }
+  });
+}
+
+// ============================================================
+// COHORTS TAB RENDER
+// ============================================================
+function renderCohorts() {
+  renderCohortHeatmap('cohortBigHeatmap', /*compact=*/false);
+
+  // Retention curves — one line per cohort
+  const monthIdx = Array.from({length: 12}, (_, i) => 'M' + i);
+  const datasets = cohortRetention.map((row, i) => {
+    const alpha = 0.3 + (i / (cohortRetention.length - 1)) * 0.7;
+    return {
+      label: cohortLabels[i],
+      data: row,
+      borderColor: `rgba(15, 118, 110, ${alpha})`,
+      backgroundColor: 'transparent',
+      borderWidth: 2,
+      tension: 0.3,
+      pointRadius: 0,
+      pointHoverRadius: 4,
+      spanGaps: false,
+    };
+  });
+  charts.cohortCurve = new Chart(document.getElementById('cohortCurveChart'), {
+    type: 'line',
+    data: { labels: monthIdx, datasets },
+    options: { maintainAspectRatio:false,
+      plugins:{ legend:{ position:'right', labels:{ boxWidth:10, padding:6, font:{ size:10 } } },
+        tooltip:{ callbacks:{ label: ctx => ctx.dataset.label + ': ' + (ctx.parsed.y !== null ? ctx.parsed.y + '%' : 'n/a') } } },
+      scales:{ x:{ grid:{ display:false } }, y:{ min:0, max:100, grid:{ color:'#f1f5f9' }, ticks:{ callback:v=>v+'%' } } } }
+  });
+
+  charts.cohortSize = new Chart(document.getElementById('cohortSizeChart'), {
+    type: 'bar',
+    data: { labels: cohortLabels, datasets: [{ label:'New buyers', data: cohortSizes, backgroundColor:'#0f766e', borderRadius:4 }] },
+    options: { maintainAspectRatio:false,
+      plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label: ctx => ctx.parsed.y.toLocaleString() + ' new buyers' } } },
+      scales:{ x:{ grid:{ display:false } }, y:{ grid:{ color:'#f1f5f9' }, ticks:{ callback:v=>v.toLocaleString() } } } }
+  });
+}
+
+// ============================================================
+// CATEGORIES TAB RENDER
+// ============================================================
+function renderCategories() {
+  const mix = categoryMixForPeriod();
+  charts.catDonut = new Chart(document.getElementById('catDonutChart'), {
+    type: 'doughnut',
+    data: { labels: mix.map(m=>m.name), datasets: [{ data: mix.map(m=>+m.pct.toFixed(1)), backgroundColor: mix.map(m=>m.color), borderColor:'#fff', borderWidth:2 }] },
+    options: { maintainAspectRatio:false, cutout:'60%',
+      plugins:{ legend:{ position:'right', labels:{ usePointStyle:true, pointStyle:'circle', boxWidth:8, padding:12 } },
+        tooltip:{ callbacks:{ label: ctx => ctx.label + ': ' + ctx.parsed + '% ($' + (mix[ctx.dataIndex].value/1000).toFixed(1) + 'M)' } } } }
+  });
+
+  // Stacked area: category GMV over time
+  const months = slicedMonths();
+  const startIdx = N - state.period;
+  const stackedDatasets = categoryKeys.map(k => ({
+    label: categoryNames[k],
+    data: categoryGmv[k].slice(startIdx),
+    backgroundColor: categoryColors[k],
+    borderColor: categoryColors[k],
+    borderWidth: 0,
+    fill: true,
+    tension: 0.2,
+    pointRadius: 0,
+  }));
+  charts.catStack = new Chart(document.getElementById('catStackChart'), {
+    type: 'line',
+    data: { labels: months, datasets: stackedDatasets },
+    options: { maintainAspectRatio:false, interaction:{ intersect:false, mode:'index' },
+      plugins:{ legend:{ position:'bottom', labels:{ usePointStyle:true, pointStyle:'circle', boxWidth:6, padding:12 } },
+        tooltip:{ callbacks:{ label: ctx => ctx.dataset.label + ': $' + ctx.parsed.y.toLocaleString() + 'K' } } },
+      scales:{ x:{ stacked:true, grid:{ display:false } }, y:{ stacked:true, grid:{ color:'#f1f5f9' }, ticks:{ callback:v=>'$'+v+'K' } } } }
+  });
+
+  // YoY growth by category (last 12M vs prior 12M)
+  const yoy = categoryKeys.map(k => {
+    const last12 = categoryGmv[k].slice(-12).reduce((a,b)=>a+b,0);
+    const prior12 = categoryGmv[k].slice(0,12).reduce((a,b)=>a+b,0);
+    return { name: categoryNames[k], color: categoryColors[k], value: (last12/prior12 - 1) * 100 };
+  }).sort((a,b) => b.value - a.value);
+
+  charts.catYoY = new Chart(document.getElementById('catYoYChart'), {
+    type: 'bar',
+    data: { labels: yoy.map(y=>y.name), datasets: [{ label:'YoY GMV growth', data: yoy.map(y=>+y.value.toFixed(1)), backgroundColor: yoy.map(y => y.value >= 0 ? '#0f766e' : '#f87171'), borderRadius:4 }] },
+    options: { maintainAspectRatio:false, indexAxis:'y',
+      plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label: ctx => (ctx.parsed.x >= 0 ? '+' : '') + ctx.parsed.x.toFixed(1) + '% YoY' } } },
+      scales:{ x:{ grid:{ color:'#f1f5f9' }, ticks:{ callback:v=>(v>=0?'+':'')+v.toFixed(0)+'%' } }, y:{ grid:{ display:false } } } }
+  });
+}
+
+// ============================================================
+// COHORT HEATMAP (shared)
+// ============================================================
+function renderCohortHeatmap(containerId, compact) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const padY = compact ? '1.5' : '2.5';
+  const headerCells = ['<th class="text-xs font-medium text-slate-500 text-left pr-3 py-1.5">Cohort</th>']
+    .concat(Array.from({length:12}, (_,i) => `<th class="text-xs font-medium text-slate-500 text-center py-1.5 px-1">M${i}</th>`))
+    .join('');
+  const rows = cohortRetention.map((row, ri) => {
+    const cells = row.map((v) => {
+      if (v === null) return '<td></td>';
+      const intensity = Math.min(1, v / 100);
+      const bg = `rgba(15,118,110,${0.08 + intensity * 0.55})`;
+      const color = intensity > 0.55 ? '#fff' : '#1e293b';
+      return `<td class="heat-cell text-center px-1" style="padding-top:${padY}px;padding-bottom:${padY}px;background:${bg}; color:${color}; border-radius:3px;">${v}%</td>`;
+    }).join('');
+    return `<tr><td class="text-xs font-medium text-slate-700 pr-3 py-1.5 whitespace-nowrap">${cohortLabels[ri]}</td>${cells}</tr>`;
+  }).join('');
+  container.innerHTML = `<table class="w-full" style="border-spacing:2px; border-collapse:separate;"><thead><tr>${headerCells}</tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+// ============================================================
+// RENDER CONTROLLER
+// ============================================================
+function renderAll() {
+  killCharts();
+  // Show/hide views
+  document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.dataset.view === state.tab));
+  // Context bar + KPIs + commentary
+  renderContext();
+  renderKpis();
+  // Disable category filter on tabs where it doesn't apply
+  const catDisabled = ['cohorts', 'unit-econ', 'categories'].includes(state.tab);
+  document.getElementById('category-filter-wrap').classList.toggle('disabled-filter', catDisabled);
+  if (catDisabled && state.category !== 'all') {
+    // reset to 'all' when entering a tab that doesn't support category filter
+    state.category = 'all';
+    document.getElementById('category-filter').value = 'all';
+    renderContext();
+    renderKpis();
+  }
+  // Dispatch to the right view renderer
+  if (state.tab === 'overview') { renderOverview(); renderCommentary(); }
+  else if (state.tab === 'growth') renderGrowth();
+  else if (state.tab === 'unit-econ') renderUnitEcon();
+  else if (state.tab === 'cohorts') renderCohorts();
+  else if (state.tab === 'categories') renderCategories();
+}
+
+// ============================================================
+// EVENT WIRING
+// ============================================================
+document.querySelectorAll('.tab').forEach(t => {
+  t.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    state.tab = t.dataset.tab;
+    renderAll();
+  });
+});
+document.querySelectorAll('[data-period]').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('[data-period]').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    state.period = parseInt(b.dataset.period, 10);
+    renderAll();
+  });
+});
+document.getElementById('category-filter').addEventListener('change', e => {
+  state.category = e.target.value;
+  renderAll();
+});
+
+// Initial render
+renderAll();
+</script>
+</body>
+</html>
