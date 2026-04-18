@@ -319,16 +319,17 @@ const sellersTotal = Array.from({length: N}, (_, i) => Math.round(240 * Math.pow
 
 // Cohort retention
 const cohortLabels = ['Q1 2024','Q2 2024','Q3 2024','Q4 2024','Q1 2025','Q2 2025','Q3 2025','Q4 2025','Q1 2026'];
+// Retention matrix: 24 columns (M0-M23). At Mar 31 2026 as-of, each cohort is mature through (Mar 2026 − acquisition month).
 const cohortRetention = [
-  [100, 58, 44, 38, 35, 33, 31, 29, 28, 27, 26, 25],                        // Q1 2024 · mature through M11 (display cap)
-  [100, 59, 45, 39, 36, 34, 32, 31, 29, 28, 27, 26],                        // Q2 2024 · mature through M11
-  [100, 60, 46, 40, 37, 35, 33, 32, 30, 29, 28, 27],                        // Q3 2024 · mature through M11
-  [100, 62, 48, 42, 39, 37, 35, 34, 32, 31, 30, 29],                        // Q4 2024 · mature through M11
-  [100, 64, 51, 45, 43, 41, 40, 39, 38, 37, 36, 35],                        // Q1 2025 · mature through M11 · repeat-booking tools launch
-  [100, 66, 53, 47, 45, 43, 42, 41, 40, 39, null, null],                    // Q2 2025 · mature through M9
-  [100, 67, 54, 48, 46, 44, 43, null, null, null, null, null],              // Q3 2025 · mature through M6
-  [100, 68, 55, 49, null, null, null, null, null, null, null, null],        // Q4 2025 · mature through M3
-  [100, null, null, null, null, null, null, null, null, null, null, null],  // Q1 2026 · mature through M0
+  [100, 58, 44, 38, 35, 33, 31, 29, 28, 27, 26, 25, 24, 23, 22, 22, 21, 21, 20, 20, 19, 19, 19, 18],     // Q1 2024 · mature through M24 (capped at M23 display)
+  [100, 59, 45, 39, 36, 34, 32, 31, 29, 28, 27, 26, 25, 24, 23, 23, 22, 21, 21, 20, 20, 19, null, null], // Q2 2024 · mature through M21
+  [100, 60, 46, 40, 37, 35, 33, 32, 30, 29, 28, 27, 26, 25, 24, 23, 23, 22, 21, null, null, null, null, null], // Q3 2024 · mature through M18
+  [100, 62, 48, 42, 39, 37, 35, 34, 32, 31, 30, 29, 28, 27, 26, 25, null, null, null, null, null, null, null, null], // Q4 2024 · mature through M15
+  [100, 64, 51, 45, 43, 41, 40, 39, 38, 37, 36, 35, 34, null, null, null, null, null, null, null, null, null, null, null], // Q1 2025 · mature through M12 · repeat-booking tools launch
+  [100, 66, 53, 47, 45, 43, 42, 41, 40, 39, null, null, null, null, null, null, null, null, null, null, null, null, null, null], // Q2 2025 · mature through M9
+  [100, 67, 54, 48, 46, 44, 43, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], // Q3 2025 · mature through M6
+  [100, 68, 55, 49, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], // Q4 2025 · mature through M3
+  [100, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], // Q1 2026 · mature through M0
 ];
 // New buyer cohort sizes (by quarter)
 const cohortSizes = [420, 485, 560, 640, 745, 860, 985, 1105, 1220];
@@ -472,7 +473,7 @@ function renderKpis() {
     const m1Values = cohortRetention.map(r => r[1]).filter(v => v !== null);
     const m3Values = cohortRetention.map(r => r[3]).filter(v => v !== null);
     const m6Values = cohortRetention.map(r => r[6]).filter(v => v !== null);
-    const m12Values = cohortRetention.map(r => r[11]).filter(v => v !== null);
+    const m12Values = cohortRetention.map(r => r[12]).filter(v => v !== null && v !== undefined);
     const avg = arr => arr.reduce((a,b)=>a+b,0) / arr.length;
     tiles = [
       { label: `Avg M1 Retention`, value: avg(m1Values).toFixed(1) + '%', meta: `<span class="chip chip-up">+10pp</span> <span class="text-xs text-slate-500">Q1'24 → Q4'25</span>` },
@@ -525,7 +526,7 @@ function renderCommentary() {
   const bullets = [
     `Over the last ${periodLabel} in ${catLabel}, GMV grew <b>${multiple}x</b> — an annualized rate of <b>${cagr.toFixed(0)}%</b>.`,
     `Take rate expanded from <b>8.1% (Jan 2024) to ~11.3% (Mar 2026)</b> as premium listings (featured placement, verified badge) scaled to 22% of GMV — partially offset by a brief Q3 2025 compression from competitive pressure in Home Services.`,
-    `Buyer M6 retention stepped up from <b>~33% (2024 cohorts) to ~42% (2025 cohorts)</b>, a ~9pp improvement at the same tenure mark — coinciding with the April 2025 launch of saved-vendor and repeat-booking tools.`,
+    `Buyer M6 retention stepped up from <b>~33% (avg of 2024 cohorts) to ~42% (avg of 2025 cohorts)</b>, a ~9pp improvement at the same tenure mark — coinciding with the April 2025 launch of saved-vendor and repeat-booking tools.`,
     `LTV:CAC improved from <b>3.8x (Q1 2024) to 5.2x (Q1 2026)</b>, though CAC is up <b>18% YoY</b> in Home Services — recommend capping paid spend there pending cohort maturation.`,
     `Active seller churn in Landscaping running <b>~9% monthly</b> (vs. 4% platform average) — investigate seasonality vs. structural issue before Q2 planning.`,
   ];
@@ -705,8 +706,8 @@ function renderUnitEcon() {
 function renderCohorts() {
   renderCohortHeatmap('cohortBigHeatmap', /*compact=*/false);
 
-  // Retention curves — one line per cohort
-  const monthIdx = Array.from({length: 12}, (_, i) => 'M' + i);
+  // Retention curves — one line per cohort, showing full 24-month window
+  const monthIdx = Array.from({length: 24}, (_, i) => 'M' + i);
   const datasets = cohortRetention.map((row, i) => {
     const alpha = 0.3 + (i / (cohortRetention.length - 1)) * 0.7;
     return {
@@ -797,18 +798,25 @@ function renderCohortHeatmap(containerId, compact) {
   const container = document.getElementById(containerId);
   if (!container) return;
   const padY = compact ? '1.5' : '2.5';
+  // Compact view (Overview tab) = first 13 months including M12 milestone; full view (Cohorts tab) = all 24 months
+  const maxCols = compact ? 13 : 24;
+  const cellPx = compact ? '1' : '0.5';
+  const fontSize = compact ? '10px' : '9.5px';
   const headerCells = ['<th class="text-xs font-medium text-slate-500 text-left pr-3 py-1.5">Cohort</th>']
-    .concat(Array.from({length:12}, (_,i) => `<th class="text-xs font-medium text-slate-500 text-center py-1.5 px-1">M${i}</th>`))
+    .concat(Array.from({length: maxCols}, (_,i) => `<th class="text-xs font-medium text-slate-500 text-center py-1.5" style="padding-left:${cellPx}px;padding-right:${cellPx}px;font-size:${fontSize};">M${i}</th>`))
     .join('');
   const rows = cohortRetention.map((row, ri) => {
-    const cells = row.map((v) => {
-      if (v === null) return '<td></td>';
+    const cells = row.slice(0, maxCols).map((v) => {
+      if (v === null || v === undefined) return '<td></td>';
       const intensity = Math.min(1, v / 100);
       const bg = `rgba(15,118,110,${0.08 + intensity * 0.55})`;
       const color = intensity > 0.55 ? '#fff' : '#1e293b';
-      return `<td class="heat-cell text-center px-1" style="padding-top:${padY}px;padding-bottom:${padY}px;background:${bg}; color:${color}; border-radius:3px;">${v}%</td>`;
+      return `<td class="heat-cell text-center" style="padding-top:${padY}px;padding-bottom:${padY}px;padding-left:${cellPx}px;padding-right:${cellPx}px;background:${bg}; color:${color}; border-radius:3px; font-size:${fontSize};">${v}%</td>`;
     }).join('');
-    return `<tr><td class="text-xs font-medium text-slate-700 pr-3 py-1.5 whitespace-nowrap">${cohortLabels[ri]}</td>${cells}</tr>`;
+    // Pad row with empty cells if it's shorter than maxCols
+    const emptyCells = Math.max(0, maxCols - row.length);
+    const padding = emptyCells > 0 ? '<td></td>'.repeat(emptyCells) : '';
+    return `<tr><td class="text-xs font-medium text-slate-700 pr-3 py-1.5 whitespace-nowrap">${cohortLabels[ri]}</td>${cells}${padding}</tr>`;
   }).join('');
   container.innerHTML = `<table class="w-full" style="border-spacing:2px; border-collapse:separate;"><thead><tr>${headerCells}</tr></thead><tbody>${rows}</tbody></table>`;
 }
