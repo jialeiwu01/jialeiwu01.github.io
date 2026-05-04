@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Lumen Analytics — SaaS Performance Dashboard</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root { --lumen:#0f766e; --lumen-dark:#134e4a; --ink:#0b1220; --muted:#64748b; }
+  html, body { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Helvetica Neue", Arial, sans-serif; color: var(--ink); background:#f8fafc; }
+  .card { background:#fff; border:1px solid #e5e7eb; border-radius:12px; box-shadow: 0 1px 2px rgba(15,23,42,0.04); }
+  .kpi-label { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); font-weight:600; }
+  .kpi-value { font-size:26px; font-weight:700; letter-spacing:-0.02em; color:var(--ink); }
+  .chip { display:inline-flex; align-items:center; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:600; }
+  .chip-up { background:#f0fdfa; color:#134e4a; }
+  .chip-dn { background:#fef2f2; color:#991b1b; }
+  .chip-flat { background:#f1f5f9; color:#475569; }
+  .tab { padding:10px 14px; font-size:13px; font-weight:500; color:var(--muted); border-bottom:2px solid transparent; cursor:pointer; user-select:none; transition: color .15s; }
+  .tab:hover { color: #334155; }
+  .tab.active { color:var(--lumen-dark); border-bottom-color:var(--lumen); }
+  .filter-btn { padding:6px 12px; font-size:12px; font-weight:500; border:1px solid #e5e7eb; background:#fff; border-radius:6px; cursor:pointer; color:#334155; transition: all .12s; }
+  .filter-btn.active { background:var(--lumen); color:#fff; border-color:var(--lumen); }
+  .filter-btn:hover:not(.active) { background:#f1f5f9; }
+  h1,h2,h3 { letter-spacing:-0.015em; }
+  .heat-cell { font-variant-numeric:tabular-nums; }
+  .insight-bullet::before { content:"▸"; color:var(--lumen); margin-right:6px; font-weight:700; }
+  .view { display:none; }
+  .view.active { display:block; animation: fadeIn .2s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform: translateY(4px); } to { opacity:1; transform: translateY(0); } }
+  .disabled-filter { opacity:0.35; pointer-events:none; }
+</style>
+</head>
+<body class="min-h-screen">
+
+<header class="bg-white border-b border-slate-200">
+  <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:var(--lumen)">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v6M12 17v6M4.22 4.22l4.24 4.24M15.54 15.54l4.24 4.24M1 12h6M17 12h6M4.22 19.78l4.24-4.24M15.54 8.46l4.24-4.24"/></svg>
+      </div>
+      <div>
+        <div class="font-semibold tracking-tight">Lumen Analytics</div>
+        <div class="text-xs text-slate-500 -mt-0.5">SaaS Performance Dashboard · Illustrative dataset</div>
+      </div>
+    </div>
+    <div class="text-xs text-slate-500">Data as of <span>Mar 31, 2026</span> · Coverage: Jan 2024 – Mar 2026 (27 months) · Refresh: Daily</div>
+  </div>
+  <div class="max-w-7xl mx-auto px-6 flex gap-1 border-t border-slate-100">
+    <div class="tab active" data-tab="overview">Overview</div>
+    <div class="tab" data-tab="arr">ARR & Revenue</div>
+    <div class="tab" data-tab="retention">Retention</div>
+    <div class="tab" data-tab="unit-econ">Unit Economics</div>
+    <div class="tab" data-tab="segments">Customers & Segments</div>
+  </div>
+</header>
+
+<main class="max-w-7xl mx-auto px-6 py-6">
+
+  <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+    <div class="flex items-center gap-2" id="period-filter-wrap">
+      <span class="text-xs font-semibold uppercase tracking-wider text-slate-500 mr-1">Period</span>
+      <button class="filter-btn" data-period="6">6M</button>
+      <button class="filter-btn" data-period="12">12M</button>
+      <button class="filter-btn active" data-period="24">24M</button>
+    </div>
+    <div class="flex items-center gap-2" id="tier-filter-wrap">
+      <span class="text-xs font-semibold uppercase tracking-wider text-slate-500 mr-1">Tier</span>
+      <select id="tier-filter" class="text-sm border border-slate-200 rounded-md px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-teal-600/40">
+        <option value="all">All tiers</option>
+        <option value="starter">Starter</option>
+        <option value="pro">Pro</option>
+        <option value="enterprise">Enterprise</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="mb-4 text-xs text-slate-500">
+    Showing <span id="ctx-period" class="font-semibold text-slate-700">24 months</span>
+    · Tier: <span id="ctx-tier" class="font-semibold text-slate-700">All</span>
+    · <span id="ctx-range" class="font-medium"></span>
+  </div>
+
+  <section id="kpi-row" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6"></section>
+
+  <!-- OVERVIEW -->
+  <section class="view active" data-view="overview">
+    <div class="card p-6 mb-6">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="font-semibold text-base">Analyst Commentary</h3>
+        <span class="text-xs text-slate-500">Reviewed weekly</span>
+      </div>
+      <ul id="ov-commentary" class="space-y-2 text-sm text-slate-700 leading-relaxed"></ul>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+      <div class="card p-5 lg:col-span-2">
+        <div class="flex items-start justify-between mb-3">
+          <div>
+            <h3 class="font-semibold text-base">ARR Trend</h3>
+            <p class="text-xs text-slate-500 mt-0.5" id="ov-arr-sub">Ending ARR by month · $K</p>
+          </div>
+          <div class="text-right">
+            <div class="text-xs text-slate-500">Period CAGR</div>
+            <div class="font-semibold text-teal-700" id="chart-cagr">—</div>
+          </div>
+        </div>
+        <div style="height:300px"><canvas id="ovArrChart"></canvas></div>
+      </div>
+      <div class="card p-5">
+        <h3 class="font-semibold text-base">NDR Trend</h3>
+        <p class="text-xs text-slate-500 mt-0.5 mb-3">Net dollar retention · trailing 12 months</p>
+        <div style="height:300px"><canvas id="ovNdrChart"></canvas></div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-5 gap-4 mb-6">
+      <div class="card p-5 lg:col-span-2">
+        <h3 class="font-semibold text-base">Customer Mix · By Tier</h3>
+        <p class="text-xs text-slate-500 mt-0.5 mb-3">Share of customer count, latest period</p>
+        <div style="height:260px"><canvas id="ovTierChart"></canvas></div>
+      </div>
+      <div class="card p-5 lg:col-span-3">
+        <div class="flex items-start justify-between mb-3">
+          <div>
+            <h3 class="font-semibold text-base">Dollar Cohort Retention</h3>
+            <p class="text-xs text-slate-500 mt-0.5">Quarterly cohorts · % of cohort starting ARR retained</p>
+          </div>
+        </div>
+        <div id="ovCohortHeatmap"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ARR & REVENUE -->
+  <section class="view" data-view="arr">
+    <div class="card p-5 mb-4">
+      <div class="flex items-start justify-between mb-3">
+        <div>
+          <h3 class="font-semibold text-base">ARR Waterfall · Quarterly</h3>
+          <p class="text-xs text-slate-500 mt-0.5">New ARR (green) + Expansion ARR (light) − Churned ARR (red) = Net new ARR per quarter</p>
+        </div>
+      </div>
+      <div style="height:340px"><canvas id="arrWaterfallChart"></canvas></div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+      <div class="card p-5">
+        <h3 class="font-semibold text-base">ARR by Tier · Stacked</h3>
+        <p class="text-xs text-slate-500 mt-0.5 mb-3">Monthly ending ARR composition · $K</p>
+        <div style="height:300px"><canvas id="arrByTierChart"></canvas></div>
+      </div>
+      <div class="card p-5">
+        <h3 class="font-semibold text-base">ASP Trend</h3>
+        <p class="text-xs text-slate-500 mt-0.5 mb-3">Average sale price (new logos) · $K</p>
+        <div style="height:300px"><canvas id="aspChart"></canvas></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- RETENTION -->
+  <section class="view" data-view="retention">
+    <div class="card p-5 mb-4">
+      <div class="flex items-start justify-between mb-3">
+        <div>
+          <h3 class="font-semibold text-base">Dollar Cohort Retention · Full Window</h3>
+          <p class="text-xs text-slate-500 mt-0.5">Each cohort's retained ARR as % of its starting ARR. Values above 100% reflect net expansion.</p>
+        </div>
+      </div>
+      <div id="cohortBigHeatmap"></div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+      <div class="card p-5">
+        <h3 class="font-semibold text-base">NDR by Cohort</h3>
+        <p class="text-xs text-slate-500 mt-0.5 mb-3">Trailing-12-month NDR for each acquisition cohort</p>
+        <div style="height:300px"><canvas id="ndrByCohortChart"></canvas></div>
+      </div>
+      <div class="card p-5">
+        <h3 class="font-semibold text-base">Logo Churn · Annualized</h3>
+        <p class="text-xs text-slate-500 mt-0.5 mb-3">% of customers lost on a rolling annual basis</p>
+        <div style="height:300px"><canvas id="logoChurnChart"></canvas></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- UNIT ECONOMICS -->
+  <section class="view" data-view="unit-econ">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+      <div class="card p-5">
+        <h3 class="font-semibold text-base">CAC Payback · Months</h3>
+        <p class="text-xs text-slate-500 mt-0.5 mb-3">Months to recover blended CAC at gross margin</p>
+        <div style="height:300px"><canvas id="cacPaybackChart"></canvas></div>
+      </div>
+      <div class="card p-5">
+        <h3 class="font-semibold text-base">LTV : CAC by Acquisition Cohort</h3>
+        <p class="text-xs text-slate-500 mt-0.5 mb-3">Target ≥ 3.0x for healthy B2B SaaS</p>
+        <div style="height:300px"><canvas id="ltvCacChart"></canvas></div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+      <div class="card p-5">
+        <h3 class="font-semibold text-base">Sales Efficiency · Quarterly</h3>
+        <p class="text-xs text-slate-500 mt-0.5 mb-3">(ΔARR × 4) ÷ S&M spend prior quarter · &gt;1.0 = healthy</p>
+        <div style="height:300px"><canvas id="magicNumberChart"></canvas></div>
+      </div>
+      <div class="card p-5">
+        <h3 class="font-semibold text-base">Rule of 40 · Trailing 12 Months</h3>
+        <p class="text-xs text-slate-500 mt-0.5 mb-3">ARR growth % + operating margin % &gt; 40% = best-in-class</p>
+        <div style="height:300px"><canvas id="ruleOf40Chart"></canvas></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SEGMENTS -->
+  <section class="view" data-view="segments">
+    <div class="card p-5 mb-4">
+      <h3 class="font-semibold text-base">Customer Count by Tier · Monthly</h3>
+      <p class="text-xs text-slate-500 mt-0.5 mb-3">Stacked count of active paying logos</p>
+      <div style="height:320px"><canvas id="custByTierChart"></canvas></div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+      <div class="card p-5">
+        <h3 class="font-semibold text-base">Top-10 Customer Concentration</h3>
+        <p class="text-xs text-slate-500 mt-0.5 mb-3">% of total ARR from top 10 customers · lower = less concentration risk</p>
+        <div style="height:280px"><canvas id="concentrationChart"></canvas></div>
+      </div>
+      <div class="card p-5">
+        <h3 class="font-semibold text-base">ARR by Segment · Latest</h3>
+        <p class="text-xs text-slate-500 mt-0.5 mb-3">SMB, mid-market, enterprise · $K</p>
+        <div style="height:280px"><canvas id="segmentArrChart"></canvas></div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="text-center text-xs text-slate-400 py-6">
+    Built by Jialei Wu · Data is synthetic and for portfolio demonstration only.
+  </footer>
+</main>
+
+<script>
+// ============================================================
+// SYNTHETIC DATA
+// ============================================================
+const N = 27; // Jan 2024 - Mar 2026
+const monthLabels = [];
+const startDate = new Date(2024, 0, 1);
+for (let i = 0; i < N; i++) {
+  const d = new Date(startDate.getFullYear(), startDate.getMonth() + i, 1);
+  monthLabels.push(d.toLocaleString('en-US', { month: 'short', year: '2-digit' }));
+}
+
+// Customer count: 150 → ~920 over 27 months
+const customerCount = Array.from({length: N}, (_, i) => {
+  const base = 150 * Math.pow(1.072, i);
+  const noise = 1 + Math.sin(i * 1.7) * 0.015;
+  return Math.round(base * noise);
+});
+
+// Tier mix shifts upmarket: 60/30/10 → 45/35/20
+function tierShare(i, startVal, endVal) {
+  return startVal + (endVal - startVal) * (i / (N - 1));
+}
+const tierStarter = customerCount.map((c, i) => Math.round(c * tierShare(i, 0.60, 0.45)));
+const tierPro     = customerCount.map((c, i) => Math.round(c * tierShare(i, 0.30, 0.35)));
+const tierEnt     = customerCount.map((c, i) => c - tierStarter[i] - tierPro[i]);
+
+// ACV by tier
+const acvStarter = 6;   // $K
+const acvPro = 18;      // $K
+const acvEnt = 72;      // $K
+
+// ARR by tier (monthly ending, $K)
+const arrStarter = tierStarter.map(c => c * acvStarter);
+const arrPro     = tierPro.map(c => c * acvPro);
+const arrEnt     = tierEnt.map(c => c * acvEnt);
+const arrTotal   = arrStarter.map((v, i) => v + arrPro[i] + arrEnt[i]);
+
+// ASP (new logo ACV) — grows from $14K to $26K as upmarket mix shifts
+const asp = Array.from({length: N}, (_, i) => 14 + (26 - 14) * (i / (N - 1)) + Math.sin(i * 1.3) * 0.5);
+
+// NDR (trailing 12-month, %), centered ~115% with quarterly variance + Q3 2024 launch boost
+const ndr = Array.from({length: N}, (_, i) => {
+  let v = 110 + (i / (N - 1)) * 8; // gentle climb 110→118
+  if (i >= 8 && i <= 14) v += 2;   // Q3-Q4 2024 product launch lift
+  if (i >= 17 && i <= 19) v -= 1.5; // brief Q2 2025 pipeline slowdown
+  return +(v + Math.sin(i * 1.4) * 0.8).toFixed(1);
+});
+
+// Logo churn (rolling annualized, %), GRR ≈ 100% - logo_churn
+const logoChurn = Array.from({length: N}, (_, i) => {
+  let v = 9 - (i / (N - 1)) * 1.5; // improving from 9% → 7.5%
+  return +(v + Math.sin(i * 1.6) * 0.4).toFixed(1);
+});
+
+// CAC payback (months)
+const cacPayback = Array.from({length: N}, (_, i) => {
+  let v = 18 - (i / (N - 1)) * 6; // improving from 18 → 12 months
+  return +(v + Math.sin(i * 1.2) * 0.6).toFixed(1);
+});
+
+// Magic number (quarterly) — 9 quarters of data Q1'24 - Q1'26
+const magicNumberQ = [0.78, 0.85, 0.92, 1.05, 1.12, 0.94, 1.02, 1.18, 1.24];
+const quarterLabels = ['Q1 2024','Q2 2024','Q3 2024','Q4 2024','Q1 2025','Q2 2025','Q3 2025','Q4 2025','Q1 2026'];
+
+// Rule of 40 (TTM, %)
+const ruleOf40 = Array.from({length: N}, (_, i) => {
+  // ARR growth % (TTM) declining gradually as base scales
+  const growth = 180 - (i / (N - 1)) * 100; // 180% → 80%
+  // Operating margin improving from -25% to -5%
+  const opm = -25 + (i / (N - 1)) * 20;
+  return +(growth + opm + Math.sin(i * 1.5) * 3).toFixed(1);
+});
+
+// Top-10 concentration (% of total ARR), declining as customer base diversifies
+const top10Concentration = Array.from({length: N}, (_, i) => {
+  let v = 52 - (i / (N - 1)) * 14;
+  return +(v + Math.sin(i * 1.4) * 0.8).toFixed(1);
+});
+
+// ARR Waterfall: 9 quarters of new / expansion / churn ARR ($K)
+// Net new ARR each quarter ≈ ΔARR for that quarter
+const arrWaterfall = quarterLabels.map((q, qi) => {
+  const monthIdx = qi * 3 + 2; // last month of quarter (or as close as possible within data)
+  const beginIdx = Math.max(0, qi * 3 - 1);
+  const endIdx = Math.min(N - 1, monthIdx);
+  const beginARR = arrTotal[beginIdx];
+  const endARR = arrTotal[endIdx];
+  // Decompose: assume ~3.5% quarterly expansion, ~1.5% quarterly churn, rest is new
+  const expansion = Math.round(beginARR * 0.035);
+  const churn = -Math.round(beginARR * 0.015);
+  const net = endARR - beginARR;
+  const newARR = net - expansion - churn; // residual
+  return { quarter: q, new: Math.round(newARR), expansion, churn };
+});
+
+// Cohort dollar retention (% of cohort's starting ARR), 24 months
+// Note: SaaS dollar retention can exceed 100% as expansion compounds
+const cohortLabels = ['Q1 2024','Q2 2024','Q3 2024','Q4 2024','Q1 2025','Q2 2025','Q3 2025','Q4 2025','Q1 2026'];
+const cohortRetention = [
+  [100, 99, 98, 97, 96, 97, 98, 100, 102, 105, 108, 112, 115, 119, 122, 125, 128, 131, 134, 137, 140, 142, 144, 145, 146],
+  [100, 99, 98, 97, 97, 99, 100, 103, 106, 110, 114, 118, 122, 126, 130, 133, 136, 139, 142, 144, 146, 147, null, null],
+  [100, 99, 99, 98, 98, 100, 102, 105, 109, 113, 118, 123, 127, 131, 135, 138, 141, 144, 146, null, null, null, null, null],
+  [100, 99, 99, 99, 100, 102, 105, 109, 113, 118, 123, 128, 132, 136, 140, 143, null, null, null, null, null, null, null, null],
+  [100, 100, 100, 100, 102, 105, 110, 115, 120, 126, 132, 138, 144, null, null, null, null, null, null, null, null, null, null, null], // post Q3'24 launch boost reflected in 2025 cohorts
+  [100, 100, 101, 102, 104, 108, 113, 119, 125, 131, null, null, null, null, null, null, null, null, null, null, null, null, null, null],
+  [100, 100, 101, 103, 106, 110, 116, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null],
+  [100, 101, 102, 105, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null],
+  [100, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null],
+];
+// LTV:CAC by acquisition cohort
+const ltvCacByCohort = [3.2, 3.5, 3.8, 4.1, 4.6, 5.0, 5.3, 5.5, 5.6];
+
+// Annualized NDR by acquisition cohort (latest measurable)
+const ndrByCohort = [113, 115, 117, 119, 124, 126, 125, 122, null];
+
+// Segment ARR latest (SMB, Mid-market, Enterprise)
+const segmentArr = { SMB: arrStarter[N-1], 'Mid-market': arrPro[N-1], Enterprise: arrEnt[N-1] };
+
+// ============================================================
+// STATE
+// ============================================================
+const state = { period: 24, tier: 'all', tab: 'overview' };
+const charts = {};
+function killCharts() { Object.keys(charts).forEach(k => { try { charts[k].destroy(); } catch {} delete charts[k]; }); }
+
+// ============================================================
+// DATA HELPERS
+// ============================================================
+function slicedMonths() { return monthLabels.slice(N - state.period); }
+function slicedArr() {
+  if (state.tier === 'starter') return arrStarter.slice(N - state.period);
+  if (state.tier === 'pro') return arrPro.slice(N - state.period);
+  if (state.tier === 'enterprise') return arrEnt.slice(N - state.period);
+  return arrTotal.slice(N - state.period);
+}
+function slicedCustomerCount() {
+  if (state.tier === 'starter') return tierStarter.slice(N - state.period);
+  if (state.tier === 'pro') return tierPro.slice(N - state.period);
+  if (state.tier === 'enterprise') return tierEnt.slice(N - state.period);
+  return customerCount.slice(N - state.period);
+}
+function cagrPct(series) {
+  if (series.length < 2) return 0;
+  const first = series[0], last = series[series.length - 1];
+  const years = (series.length - 1) / 12;
+  return (Math.pow(last / first, 1 / years) - 1) * 100;
+}
+function fmtPct1(v) { return (v >= 0 ? '+' : '') + v.toFixed(1) + '%'; }
+function fmt$M(v) { return '$' + (v / 1000).toFixed(1) + 'M'; }
+
+// ============================================================
+// KPI ROW
+// ============================================================
+function renderKpis() {
+  const row = document.getElementById('kpi-row');
+  const period = state.period;
+  const arr = slicedArr();
+  const customers = slicedCustomerCount();
+  const startIdx = N - period;
+  const hasPrior = (startIdx - period) >= 0;
+  const arrEndCurrent = arr[arr.length - 1];
+  const arrEndPrior  = hasPrior ? (state.tier === 'all' ? arrTotal[startIdx - 1] : (state.tier === 'starter' ? arrStarter : state.tier === 'pro' ? arrPro : arrEnt)[startIdx - 1]) : null;
+  const ndrCurrent = ndr[N - 1];
+  const churnCurrent = logoChurn[N - 1];
+  const grrCurrent = +(100 - churnCurrent).toFixed(1);
+  const magicCurrent = magicNumberQ[magicNumberQ.length - 1];
+
+  const priorChip = (cur, prior) => prior === null
+    ? '<span class="chip chip-flat">n/a</span> <span class="text-xs text-slate-500">no prior period</span>'
+    : `<span class="chip ${cur >= prior ? 'chip-up' : 'chip-dn'}">${fmtPct1((cur/prior - 1) * 100)}</span> <span class="text-xs text-slate-500">vs. prior ${period}M</span>`;
+
+  let tiles = [];
+
+  if (state.tab === 'overview') {
+    tiles = [
+      { label:`Ending ARR`, value: fmt$M(arrEndCurrent), meta: priorChip(arrEndCurrent, arrEndPrior) },
+      { label:`NDR (TTM)`, value: ndrCurrent.toFixed(1) + '%', meta: `<span class="chip chip-up">+${(ndr[N-1] - ndr[0]).toFixed(1)}pp</span> <span class="text-xs text-slate-500">since Jan '24</span>` },
+      { label:`GRR (TTM)`, value: grrCurrent.toFixed(1) + '%', meta: `<span class="chip chip-up">+${(logoChurn[0] - logoChurn[N-1]).toFixed(1)}pp</span> <span class="text-xs text-slate-500">improving</span>` },
+      { label:`Active Customers`, value: customers[customers.length - 1].toLocaleString(), meta: `<span class="chip chip-up">${fmtPct1((customers[customers.length-1]/customers[0]-1)*100)}</span> <span class="text-xs text-slate-500">period growth</span>` },
+      { label:`Sales Efficiency`, value: magicCurrent.toFixed(2) + 'x', meta: `<span class="chip ${magicCurrent >= 1 ? 'chip-up' : 'chip-dn'}">${magicCurrent >= 1 ? '> 1.0x' : '< 1.0x'}</span> <span class="text-xs text-slate-500">healthy</span>` },
+      { label:`Period CAGR`, value: fmtPct1(cagrPct(arr)), meta: `<span class="text-xs text-slate-500">annualized ARR</span>` },
+    ];
+  } else if (state.tab === 'arr') {
+    const ttmNew = arrWaterfall.slice(-4).reduce((s, w) => s + w.new, 0);
+    const ttmExp = arrWaterfall.slice(-4).reduce((s, w) => s + w.expansion, 0);
+    const ttmChurn = arrWaterfall.slice(-4).reduce((s, w) => s + w.churn, 0);
+    const ttmNet = ttmNew + ttmExp + ttmChurn;
+    tiles = [
+      { label:`Ending ARR`, value: fmt$M(arrEndCurrent), meta: priorChip(arrEndCurrent, arrEndPrior) },
+      { label:`New ARR (TTM)`, value: '$' + (ttmNew/1000).toFixed(1) + 'M', meta: `<span class="text-xs text-slate-500">trailing 4 quarters</span>` },
+      { label:`Expansion ARR (TTM)`, value: '$' + (ttmExp/1000).toFixed(1) + 'M', meta: `<span class="chip chip-up">${((ttmExp/(ttmNew+ttmExp))*100).toFixed(0)}% mix</span> <span class="text-xs text-slate-500">of gross adds</span>` },
+      { label:`Churned ARR (TTM)`, value: '$' + Math.abs(ttmChurn/1000).toFixed(1) + 'M', meta: `<span class="text-xs text-slate-500">gross dollar churn</span>` },
+      { label:`Net New ARR (TTM)`, value: '$' + (ttmNet/1000).toFixed(1) + 'M', meta: `<span class="text-xs text-slate-500">new + expansion − churn</span>` },
+      { label:`MRR`, value: '$' + (arrEndCurrent/12/1000).toFixed(2) + 'M', meta: `<span class="text-xs text-slate-500">monthly</span>` },
+    ];
+  } else if (state.tab === 'retention') {
+    const m12 = cohortRetention.map(r => r[12]).filter(v => v !== null && v !== undefined);
+    const m24 = cohortRetention.map(r => r[24]).filter(v => v !== null && v !== undefined);
+    tiles = [
+      { label:`NDR (TTM)`, value: ndrCurrent.toFixed(1) + '%', meta: `<span class="text-xs text-slate-500">latest period</span>` },
+      { label:`GRR (TTM)`, value: grrCurrent.toFixed(1) + '%', meta: `<span class="text-xs text-slate-500">100% − logo churn</span>` },
+      { label:`Logo Churn`, value: churnCurrent.toFixed(1) + '%', meta: `<span class="chip chip-up">improving</span> <span class="text-xs text-slate-500">annualized</span>` },
+      { label:`M12 Retention (avg)`, value: m12.length ? (m12.reduce((a,b)=>a+b,0)/m12.length).toFixed(0) + '%' : 'n/a', meta: `<span class="text-xs text-slate-500">across mature cohorts</span>` },
+      { label:`M24 Retention`, value: m24.length ? m24[0] + '%' : 'n/a', meta: `<span class="text-xs text-slate-500">Q1 2024 cohort</span>` },
+      { label:`Cohorts Tracked`, value: cohortLabels.length.toString(), meta: `<span class="text-xs text-slate-500">quarterly</span>` },
+    ];
+  } else if (state.tab === 'unit-econ') {
+    const aspCurrent = asp[N - 1];
+    const cacCurrent = cacPayback[N - 1];
+    const ltvCacCurrent = ltvCacByCohort[ltvCacByCohort.length - 1];
+    const r40Current = ruleOf40[N - 1];
+    tiles = [
+      { label:`ASP (new logos)`, value: '$' + aspCurrent.toFixed(1) + 'K', meta: `<span class="chip chip-up">+${(((aspCurrent/asp[0])-1)*100).toFixed(0)}%</span> <span class="text-xs text-slate-500">since Jan '24</span>` },
+      { label:`CAC Payback`, value: cacCurrent.toFixed(1) + ' mo', meta: `<span class="chip chip-up">${(cacPayback[0] - cacCurrent).toFixed(1)} mo</span> <span class="text-xs text-slate-500">faster vs. start</span>` },
+      { label:`LTV : CAC`, value: ltvCacCurrent.toFixed(1) + 'x', meta: `<span class="chip chip-up">+${(ltvCacCurrent - ltvCacByCohort[0]).toFixed(1)}x</span> <span class="text-xs text-slate-500">vs. Q1 '24</span>` },
+      { label:`Sales Efficiency`, value: magicCurrent.toFixed(2) + 'x', meta: `<span class="chip ${magicCurrent >= 1 ? 'chip-up' : 'chip-dn'}">${magicCurrent >= 1 ? 'healthy' : 'sub-1.0'}</span> <span class="text-xs text-slate-500">latest quarter</span>` },
+      { label:`Rule of 40`, value: r40Current.toFixed(0) + '%', meta: `<span class="chip ${r40Current >= 40 ? 'chip-up' : 'chip-dn'}">${r40Current >= 40 ? '≥ 40' : '< 40'}</span> <span class="text-xs text-slate-500">TTM</span>` },
+      { label:`Gross Margin`, value: '78%', meta: `<span class="text-xs text-slate-500">software-typical</span>` },
+    ];
+  } else if (state.tab === 'segments') {
+    const totalCust = customerCount[N - 1];
+    const totalArr = arrTotal[N - 1];
+    tiles = [
+      { label:`Total Customers`, value: totalCust.toLocaleString(), meta: `<span class="chip chip-up">${fmtPct1((customerCount[N-1]/customerCount[0]-1)*100)}</span> <span class="text-xs text-slate-500">since Jan '24</span>` },
+      { label:`Starter % of Cust.`, value: ((tierStarter[N-1]/totalCust)*100).toFixed(0) + '%', meta: `<span class="text-xs text-slate-500">${tierStarter[N-1]} customers</span>` },
+      { label:`Pro % of Cust.`, value: ((tierPro[N-1]/totalCust)*100).toFixed(0) + '%', meta: `<span class="text-xs text-slate-500">${tierPro[N-1]} customers</span>` },
+      { label:`Enterprise % of Cust.`, value: ((tierEnt[N-1]/totalCust)*100).toFixed(0) + '%', meta: `<span class="chip chip-up">+${((tierEnt[N-1]/totalCust - tierEnt[0]/customerCount[0])*100).toFixed(0)}pp</span> <span class="text-xs text-slate-500">upmarket shift</span>` },
+      { label:`Top-10 Concentration`, value: top10Concentration[N-1].toFixed(1) + '%', meta: `<span class="chip chip-up">${(top10Concentration[0] - top10Concentration[N-1]).toFixed(1)}pp</span> <span class="text-xs text-slate-500">de-risking</span>` },
+      { label:`Avg ACV`, value: '$' + (totalArr/totalCust).toFixed(1) + 'K', meta: `<span class="chip chip-up">+${(((totalArr/totalCust)/(arrTotal[0]/customerCount[0]))-1)*100|0}%</span> <span class="text-xs text-slate-500">since Jan '24</span>` },
+    ];
+  }
+
+  row.innerHTML = tiles.map(t => `
+    <div class="card p-4">
+      <div class="kpi-label">${t.label}</div>
+      <div class="kpi-value mt-1">${t.value}</div>
+      <div class="mt-1">${t.meta}</div>
+    </div>`).join('');
+}
+
+// ============================================================
+// COMMENTARY
+// ============================================================
+function renderCommentary() {
+  const arr = slicedArr();
+  const cagr = cagrPct(arr);
+  const periodLabel = state.period + 'M';
+  const tierLabel = state.tier === 'all' ? 'all tiers' : state.tier.charAt(0).toUpperCase() + state.tier.slice(1);
+  const multiple = (arr[arr.length-1] / arr[0]).toFixed(1);
+  const bullets = [
+    `Over the last ${periodLabel} (${tierLabel}), ARR grew <b>${multiple}x</b> — annualized at <b>${cagr.toFixed(0)}%</b>.`,
+    `NDR averaged <b>~${(ndr.reduce((a,b)=>a+b,0)/N).toFixed(1)}%</b> across the period, lifting in Q3 2024 (~+2pp) following the Insights+ feature launch and dipping briefly in Q2 2025 from a macro-driven pipeline slowdown.`,
+    `Logo churn improved from <b>${logoChurn[0].toFixed(1)}% to ${logoChurn[N-1].toFixed(1)}%</b> annualized — driven by enterprise tier customers showing structurally lower churn than Starter.`,
+    `Top-10 customer concentration declined from <b>${top10Concentration[0].toFixed(1)}% to ${top10Concentration[N-1].toFixed(1)}%</b> of ARR as the customer base diversified — material de-risking ahead of the Series C.`,
+    `CAC payback compressed from <b>${cacPayback[0].toFixed(1)} months to ${cacPayback[N-1].toFixed(1)} months</b>, with LTV:CAC stepping up from <b>${ltvCacByCohort[0].toFixed(1)}x to ${ltvCacByCohort[ltvCacByCohort.length-1].toFixed(1)}x</b> on the latest cohort.`,
+  ];
+  const el = document.getElementById('ov-commentary');
+  if (el) el.innerHTML = bullets.map(b => `<li class="insight-bullet">${b}</li>`).join('');
+}
+
+// ============================================================
+// CONTEXT BAR
+// ============================================================
+function renderContext() {
+  const fullWindow = state.tab === 'retention';
+  const months = fullWindow ? monthLabels : slicedMonths();
+  document.getElementById('ctx-period').textContent = months.length + ' months';
+  const tierMap = { all:'All', starter:'Starter', pro:'Pro', enterprise:'Enterprise' };
+  document.getElementById('ctx-tier').textContent = tierMap[state.tier];
+  document.getElementById('ctx-range').textContent = months.length ? `${months[0]} – ${months[months.length-1]}` : '';
+}
+
+// ============================================================
+// CHART DEFAULTS
+// ============================================================
+Chart.defaults.font.family = '-apple-system, "Inter", "Helvetica Neue", Arial, sans-serif';
+Chart.defaults.font.size = 11;
+Chart.defaults.color = '#475569';
+Chart.defaults.plugins.tooltip.padding = 10;
+Chart.defaults.plugins.tooltip.titleFont = { weight: '600' };
+Chart.defaults.plugins.tooltip.backgroundColor = '#0b1220';
+Chart.defaults.plugins.tooltip.cornerRadius = 6;
+
+// ============================================================
+// OVERVIEW
+// ============================================================
+function renderOverview() {
+  const months = slicedMonths();
+  const arr = slicedArr();
+  const ndrSlice = ndr.slice(N - state.period);
+
+  document.getElementById('chart-cagr').textContent = fmtPct1(cagrPct(arr));
+  document.getElementById('ov-arr-sub').textContent = `Ending ARR by month · ${state.tier === 'all' ? 'All tiers' : state.tier.charAt(0).toUpperCase()+state.tier.slice(1)} · $K`;
+
+  charts.ovArr = new Chart(document.getElementById('ovArrChart'), {
+    type: 'line',
+    data: { labels: months, datasets: [{ label:'Ending ARR ($K)', data: arr, borderColor:'#0f766e', backgroundColor:'rgba(15,118,110,0.12)', borderWidth:2.5, tension:0.3, pointRadius:0, pointHoverRadius:4, fill:true }] },
+    options: { maintainAspectRatio:false, interaction:{ intersect:false, mode:'index' },
+      plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label: ctx => 'ARR: $' + ctx.parsed.y.toLocaleString() + 'K' } } },
+      scales:{ x:{ grid:{ display:false } }, y:{ grid:{ color:'#f1f5f9' }, ticks:{ callback:v=>'$'+(v/1000).toFixed(1)+'M' } } } }
+  });
+
+  charts.ovNdr = new Chart(document.getElementById('ovNdrChart'), {
+    type: 'line',
+    data: { labels: months, datasets: [{ label:'NDR', data: ndrSlice, borderColor:'#0f766e', backgroundColor:'rgba(15,118,110,0.10)', borderWidth:2, tension:0.35, pointRadius:0, pointHoverRadius:4, fill:true }] },
+    options: { maintainAspectRatio:false, interaction:{ intersect:false, mode:'index' },
+      plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label: ctx => 'NDR: ' + ctx.parsed.y.toFixed(1) + '%' } } },
+      scales:{ x:{ grid:{ display:false } }, y:{ min:105, max:130, grid:{ color:'#f1f5f9' }, ticks:{ callback:v=>v+'%' } } } }
+  });
+
+  // Tier mix donut (latest period)
+  const tierData = [tierStarter[N-1], tierPro[N-1], tierEnt[N-1]];
+  charts.ovTier = new Chart(document.getElementById('ovTierChart'), {
+    type: 'doughnut',
+    data: { labels: ['Starter','Pro','Enterprise'], datasets: [{ data: tierData, backgroundColor:['#5eead4','#0d9488','#134e4a'], borderColor:'#fff', borderWidth:2 }] },
+    options: { maintainAspectRatio:false, cutout:'60%',
+      plugins:{ legend:{ position:'right', labels:{ usePointStyle:true, pointStyle:'circle', boxWidth:8, padding:12 } },
+        tooltip:{ callbacks:{ label: ctx => ctx.label + ': ' + ctx.parsed + ' customers (' + ((ctx.parsed/tierData.reduce((a,b)=>a+b,0))*100).toFixed(0) + '%)' } } } }
+  });
+
+  renderCohortHeatmap('ovCohortHeatmap', /*compact=*/true);
+}
+
+// ============================================================
+// ARR & REVENUE
+// ============================================================
+function renderArrTab() {
+  const labels = arrWaterfall.map(w => w.quarter);
+  charts.arrWaterfall = new Chart(document.getElementById('arrWaterfallChart'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label:'New ARR', data: arrWaterfall.map(w => w.new), backgroundColor:'#0f766e', stack:'a' },
+        { label:'Expansion ARR', data: arrWaterfall.map(w => w.expansion), backgroundColor:'#5eead4', stack:'a' },
+        { label:'Churned ARR', data: arrWaterfall.map(w => w.churn), backgroundColor:'#f87171', stack:'a' },
+      ]
+    },
+    options: { maintainAspectRatio:false, interaction:{ intersect:false, mode:'index' },
+      plugins:{ legend:{ position:'bottom', labels:{ usePointStyle:true, pointStyle:'circle', boxWidth:6, padding:14 } },
+        tooltip:{ callbacks:{ label: ctx => ctx.dataset.label + ': $' + ctx.parsed.y.toLocaleString() + 'K' } } },
+      scales:{ x:{ grid:{ display:false }, stacked:true }, y:{ stacked:true, grid:{ color:'#f1f5f9' }, ticks:{ callback:v=>'$'+v+'K' } } } }
+  });
+
+  const months = slicedMonths();
+  const startIdx = N - state.period;
+  charts.arrByTier = new Chart(document.getElementById('arrByTierChart'), {
+    type: 'line',
+    data: { labels: months, datasets: [
+      { label:'Starter', data: arrStarter.slice(startIdx), backgroundColor:'#5eead4', borderColor:'#5eead4', fill:true, tension:0.2, pointRadius:0, borderWidth:0 },
+      { label:'Pro', data: arrPro.slice(startIdx), backgroundColor:'#0d9488', borderColor:'#0d9488', fill:true, tension:0.2, pointRadius:0, borderWidth:0 },
+      { label:'Enterprise', data: arrEnt.slice(startIdx), backgroundColor:'#134e4a', borderColor:'#134e4a', fill:true, tension:0.2, pointRadius:0, borderWidth:0 },
+    ]},
+    options: { maintainAspectRatio:false, interaction:{ intersect:false, mode:'index' },
+      plugins:{ legend:{ position:'bottom', labels:{ usePointStyle:true, pointStyle:'circle', boxWidth:6, padding:14 } },
+        tooltip:{ callbacks:{ label: ctx => ctx.dataset.label + ': $' + ctx.parsed.y.toLocaleString() + 'K' } } },
+      scales:{ x:{ stacked:true, grid:{ display:false } }, y:{ stacked:true, grid:{ color:'#f1f5f9' }, ticks:{ callback:v=>'$'+v+'K' } } } }
+  });
+
+  charts.asp = new Chart(document.getElementById('aspChart'), {
+    type: 'line',
+    data: { labels: months, datasets: [{ label:'ASP', data: asp.slice(startIdx), borderColor:'#0f766e', backgroundColor:'rgba(15,118,110,0.10)', borderWidth:2, tension:0.3, pointRadius:0, pointHoverRadius:4, fill:true }] },
+    options: { maintainAspectRatio:false, interaction:{ intersect:false, mode:'index' },
+      plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label: ctx => 'ASP: $' + ctx.parsed.y.toFixed(1) + 'K' } } },
+      scales:{ x:{ grid:{ display:false } }, y:{ grid:{ color:'#f1f5f9' }, ticks:{ callback:v=>'$'+v+'K' } } } }
+  });
+}
+
+// ============================================================
+// RETENTION
+// ============================================================
+// quarter start months within the 27-month dataset (one entry per cohortLabels row)
+const cohortStartMonths = [0, 3, 6, 9, 12, 15, 18, 21, 24];
+
+function cohortFilterIdx() {
+  const startIdx = N - state.period;
+  const idx = cohortStartMonths.findIndex(m => m >= startIdx);
+  return idx === -1 ? 0 : idx;
+}
+
+function renderRetention() {
+  renderCohortHeatmap('cohortBigHeatmap', /*compact=*/false, 0);
+
+  charts.ndrByCohort = new Chart(document.getElementById('ndrByCohortChart'), {
+    type: 'bar',
+    data: { labels: cohortLabels, datasets: [{ label:'NDR', data: ndrByCohort, backgroundColor: ndrByCohort.map(v => v === null ? '#cbd5e1' : v >= 110 ? '#0f766e' : '#f87171'), borderRadius:4 }] },
+    options: { maintainAspectRatio:false,
+      plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label: ctx => ctx.parsed.y === null ? 'n/a' : 'NDR: ' + ctx.parsed.y.toFixed(0) + '%' } } },
+      scales:{ x:{ grid:{ display:false } }, y:{ min:100, max:130, grid:{ color:'#f1f5f9' }, ticks:{ callback:v=>v+'%' } } } }
+  });
+
+  charts.logoChurn = new Chart(document.getElementById('logoChurnChart'), {
+    type: 'line',
+    data: { labels: monthLabels, datasets: [{ label:'Logo churn', data: logoChurn, borderColor:'#f87171', backgroundColor:'rgba(248,113,113,0.10)', borderWidth:2, tension:0.3, pointRadius:0, pointHoverRadius:4, fill:true }] },
+    options: { maintainAspectRatio:false, interaction:{ intersect:false, mode:'index' },
+      plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label: ctx => 'Logo churn: ' + ctx.parsed.y.toFixed(1) + '%' } } },
+      scales:{ x:{ grid:{ display:false } }, y:{ min:6, max:11, grid:{ color:'#f1f5f9' }, ticks:{ callback:v=>v+'%' } } } }
+  });
+}
+
+// ============================================================
+// UNIT ECONOMICS
+// ============================================================
+function renderUnitEcon() {
+  const months = slicedMonths();
+  const startIdx = N - state.period;
+
+  charts.cacPayback = new Chart(document.getElementById('cacPaybackChart'), {
+    type: 'line',
+    data: { labels: months, datasets: [{ label:'CAC payback', data: cacPayback.slice(startIdx), borderColor:'#0f766e', backgroundColor:'rgba(15,118,110,0.10)', borderWidth:2, tension:0.3, pointRadius:0, pointHoverRadius:4, fill:true }] },
+    options: { maintainAspectRatio:false, interaction:{ intersect:false, mode:'index' },
+      plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label: ctx => ctx.parsed.y.toFixed(1) + ' months' } } },
+      scales:{ x:{ grid:{ display:false } }, y:{ min:10, max:20, grid:{ color:'#f1f5f9' }, ticks:{ callback:v=>v+' mo' } } } }
+  });
+
+  charts.ltvCac = new Chart(document.getElementById('ltvCacChart'), {
+    type: 'bar',
+    data: { labels: cohortLabels, datasets: [{ label:'LTV:CAC', data: ltvCacByCohort, backgroundColor: ltvCacByCohort.map(v => v >= 3 ? '#0f766e' : '#f87171'), borderRadius:4 }] },
+    options: { maintainAspectRatio:false,
+      plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label: ctx => ctx.parsed.y.toFixed(1) + 'x' } } },
+      scales:{ x:{ grid:{ display:false } }, y:{ grid:{ color:'#f1f5f9' }, ticks:{ callback:v=>v.toFixed(1)+'x' } } } }
+  });
+
+  charts.magicNumber = new Chart(document.getElementById('magicNumberChart'), {
+    type: 'bar',
+    data: { labels: quarterLabels, datasets: [{ label:'Sales Efficiency', data: magicNumberQ, backgroundColor: magicNumberQ.map(v => v >= 1 ? '#0f766e' : '#f87171'), borderRadius:4 }] },
+    options: { maintainAspectRatio:false,
+      plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label: ctx => ctx.parsed.y.toFixed(2) + 'x' } } },
+      scales:{ x:{ grid:{ display:false } }, y:{ min:0, max:1.5, grid:{ color:'#f1f5f9' }, ticks:{ callback:v=>v.toFixed(2)+'x' } } } }
+  });
+
+  charts.ruleOf40 = new Chart(document.getElementById('ruleOf40Chart'), {
+    type: 'line',
+    data: { labels: months, datasets: [{ label:'Rule of 40', data: ruleOf40.slice(startIdx), borderColor:'#0f766e', backgroundColor:'rgba(15,118,110,0.10)', borderWidth:2, tension:0.3, pointRadius:0, pointHoverRadius:4, fill:true }] },
+    options: { maintainAspectRatio:false, interaction:{ intersect:false, mode:'index' },
+      plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label: ctx => 'Rule of 40: ' + ctx.parsed.y.toFixed(0) + '%' } } },
+      scales:{ x:{ grid:{ display:false } }, y:{ grid:{ color:'#f1f5f9' }, ticks:{ callback:v=>v+'%' } } } }
+  });
+}
+
+// ============================================================
+// SEGMENTS
+// ============================================================
+function renderSegments() {
+  const months = slicedMonths();
+  const startIdx = N - state.period;
+
+  charts.custByTier = new Chart(document.getElementById('custByTierChart'), {
+    type: 'line',
+    data: { labels: months, datasets: [
+      { label:'Starter', data: tierStarter.slice(startIdx), backgroundColor:'#5eead4', borderColor:'#5eead4', fill:true, tension:0.2, pointRadius:0, borderWidth:0 },
+      { label:'Pro', data: tierPro.slice(startIdx), backgroundColor:'#0d9488', borderColor:'#0d9488', fill:true, tension:0.2, pointRadius:0, borderWidth:0 },
+      { label:'Enterprise', data: tierEnt.slice(startIdx), backgroundColor:'#134e4a', borderColor:'#134e4a', fill:true, tension:0.2, pointRadius:0, borderWidth:0 },
+    ]},
+    options: { maintainAspectRatio:false, interaction:{ intersect:false, mode:'index' },
+      plugins:{ legend:{ position:'bottom', labels:{ usePointStyle:true, pointStyle:'circle', boxWidth:6, padding:14 } },
+        tooltip:{ callbacks:{ label: ctx => ctx.dataset.label + ': ' + ctx.parsed.y + ' customers' } } },
+      scales:{ x:{ stacked:true, grid:{ display:false } }, y:{ stacked:true, grid:{ color:'#f1f5f9' }, ticks:{ callback:v=>v.toLocaleString() } } } }
+  });
+
+  charts.concentration = new Chart(document.getElementById('concentrationChart'), {
+    type: 'line',
+    data: { labels: months, datasets: [{ label:'Top-10 ARR concentration', data: top10Concentration.slice(startIdx), borderColor:'#0f766e', backgroundColor:'rgba(15,118,110,0.12)', borderWidth:2, tension:0.3, pointRadius:0, pointHoverRadius:4, fill:true }] },
+    options: { maintainAspectRatio:false, interaction:{ intersect:false, mode:'index' },
+      plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label: ctx => 'Top-10: ' + ctx.parsed.y.toFixed(1) + '%' } } },
+      scales:{ x:{ grid:{ display:false } }, y:{ min:30, max:55, grid:{ color:'#f1f5f9' }, ticks:{ callback:v=>v+'%' } } } }
+  });
+
+  const segLabels = Object.keys(segmentArr);
+  const segValues = Object.values(segmentArr);
+  charts.segmentArr = new Chart(document.getElementById('segmentArrChart'), {
+    type: 'bar',
+    data: { labels: segLabels, datasets: [{ label:'ARR', data: segValues, backgroundColor:['#5eead4','#0d9488','#134e4a'], borderRadius:4 }] },
+    options: { maintainAspectRatio:false, indexAxis:'y',
+      plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label: ctx => '$' + ctx.parsed.x.toLocaleString() + 'K (' + ((ctx.parsed.x/segValues.reduce((a,b)=>a+b,0))*100).toFixed(0) + '%)' } } },
+      scales:{ x:{ grid:{ color:'#f1f5f9' }, ticks:{ callback:v=>'$'+(v/1000).toFixed(1)+'M' } }, y:{ grid:{ display:false } } } }
+  });
+}
+
+// ============================================================
+// COHORT HEATMAP (shared)
+// ============================================================
+function renderCohortHeatmap(containerId, compact, startRow=0) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const padY = compact ? '1.5' : '2.5';
+  const maxCols = compact ? 13 : 25;
+  const cellPx = compact ? '1' : '0.5';
+  const fontSize = compact ? '10px' : '9.5px';
+  const headerCells = ['<th class="text-xs font-medium text-slate-500 text-left pr-3 py-1.5">Cohort</th>']
+    .concat(Array.from({length: maxCols}, (_,i) => `<th class="text-xs font-medium text-slate-500 text-center py-1.5" style="padding-left:${cellPx}px;padding-right:${cellPx}px;font-size:${fontSize};">M${i}</th>`))
+    .join('');
+  const rows = cohortRetention.slice(startRow).map((row, ri) => {
+    const cells = row.slice(0, maxCols).map((v) => {
+      if (v === null || v === undefined) return '<td></td>';
+      // Color scale: 80=red, 100=neutral, 145=indigo
+      let bg, color;
+      if (v < 100) {
+        const t = Math.max(0, (100 - v) / 25);
+        bg = `rgba(248, 113, 113, ${0.1 + t * 0.5})`;
+        color = '#1e293b';
+      } else {
+        const t = Math.min(1, (v - 100) / 50);
+        bg = `rgba(79, 70, 229, ${0.08 + t * 0.6})`;
+        color = t > 0.55 ? '#fff' : '#1e293b';
+      }
+      return `<td class="heat-cell text-center" style="padding-top:${padY}px;padding-bottom:${padY}px;padding-left:${cellPx}px;padding-right:${cellPx}px;background:${bg}; color:${color}; border-radius:3px; font-size:${fontSize};">${v}%</td>`;
+    }).join('');
+    const emptyCells = Math.max(0, maxCols - row.length);
+    const padding = emptyCells > 0 ? '<td></td>'.repeat(emptyCells) : '';
+    return `<tr><td class="text-xs font-medium text-slate-700 pr-3 py-1.5 whitespace-nowrap">${cohortLabels[startRow + ri]}</td>${cells}${padding}</tr>`;
+  }).join('');
+  container.innerHTML = `<table class="w-full" style="border-spacing:2px; border-collapse:separate;"><thead><tr>${headerCells}</tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+// ============================================================
+// RENDER CONTROLLER
+// ============================================================
+function renderAll() {
+  killCharts();
+  document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.dataset.view === state.tab));
+  renderContext();
+  renderKpis();
+  // Period filter disabled on Retention tab (always shows full Jan 2024–Mar 2026 window)
+  const periodDisabled = state.tab === 'retention';
+  document.getElementById('period-filter-wrap').classList.toggle('disabled-filter', periodDisabled);
+  // Tier filter only applies on Overview & ARR tabs
+  const tierDisabled = ['retention', 'unit-econ', 'segments'].includes(state.tab);
+  document.getElementById('tier-filter-wrap').classList.toggle('disabled-filter', tierDisabled);
+  if (tierDisabled && state.tier !== 'all') {
+    state.tier = 'all';
+    document.getElementById('tier-filter').value = 'all';
+    renderContext();
+    renderKpis();
+  }
+  if (state.tab === 'overview') { renderOverview(); renderCommentary(); }
+  else if (state.tab === 'arr') renderArrTab();
+  else if (state.tab === 'retention') renderRetention();
+  else if (state.tab === 'unit-econ') renderUnitEcon();
+  else if (state.tab === 'segments') renderSegments();
+}
+
+// ============================================================
+// EVENT WIRING
+// ============================================================
+document.querySelectorAll('.tab').forEach(t => {
+  t.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    state.tab = t.dataset.tab;
+    renderAll();
+  });
+});
+document.querySelectorAll('[data-period]').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('[data-period]').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    state.period = parseInt(b.dataset.period, 10);
+    renderAll();
+  });
+});
+document.getElementById('tier-filter').addEventListener('change', e => {
+  state.tier = e.target.value;
+  renderAll();
+});
+
+renderAll();
+</script>
+</body>
+</html>
